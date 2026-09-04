@@ -315,7 +315,7 @@ component HomePage inherits Rectangle {
         padding: 18px; spacing: 14px;
         // HERO compact
         Rectangle {
-            height: 118px; background: #12131A; border-width: 1px; border-color: Theme.border; border-radius: 18px; clip: true;
+            height: 130px; background: #12131A; border-width: 1px; border-color: Theme.border; border-radius: 18px; clip: true;
             // purple glow overlay
             Rectangle { x: 420px; y: -30px; width: 380px; height: 180px; background: #7C5CFC14; border-radius: 999px; }
             HorizontalBox { padding: 18px; spacing: 14px;
@@ -347,56 +347,89 @@ component HomePage inherits Rectangle {
                 }
             }
         }
-        // STUDY | STUDIO cards
+        // STUDY | STUDIO cards — dense, no giant empty
         HorizontalBox { spacing: 12px;
-            // STUDY card
+            // STUDY card — dense with lessons
             Rectangle {
-                background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 16px;
+                background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 14px;
                 TouchArea { clicked => { AppState.view = "study"; } }
-                VerticalBox { padding: 16px; spacing: 8px;
-                    HorizontalBox { spacing: 10px;
-                        Rectangle { width: 36px; height: 36px; border-radius: 10px; background: #ffffff08; border-width: 1px; border-color: Theme.border;
-                            Text { text: "◐"; font-size: 16px; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; } }
-                        VerticalBox { spacing: 2px;
-                            Text { text: AppState.lang == "ru" ? "STUDY MODE" : "STUDY MODE"; font-size: 9px; font-weight: 700; color: Theme.muted; letter-spacing: 1px; }
-                            Text { text: AppState.lang == "ru" ? "Изучай основы" : "Learn fundamentals"; font-size: 14px; font-weight: 700; color: Theme.text; }
-                        }
-                    }
-                    Text { text: AppState.lang == "ru" ? "Архитектура, конструкции, материалы и инженерия — 8 курсов, прогресс локально." : "Architecture, structures, materials & engineering — 8 courses, local progress."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
-                    Rectangle { height: 6px; border-radius: 3px; background: #ffffff12; Rectangle { width: 34%; height: 100%; background: Theme.purple; border-radius: 3px; } }
-                    HorizontalBox { spacing: 6px; alignment: space-between;
-                        Text { text: AppState.lang == "ru" ? "Войти →" : "Enter →"; font-size: 11px; font-weight: 700; color: Theme.text; vertical-alignment: center; }
-                        Text { text: "8 courses"; font-size: 10px; color: Theme.muted2; vertical-alignment: center; }
-                    }
-                }
-                // hover lift
-                property <length> ty: 0px; y: ty; animate y { duration: 180ms; easing: ease-out; }
-                TouchArea { mouse-cursor: pointer; moved => { parent.ty = self.has-hover ? -2px : 0px; } }
-            }
-            // STUDIO card — primary
-            Rectangle {
-                background: #12131A; border-width: 1px; border-color: Theme.purple; border-radius: 16px; drop-shadow-blur: 18px; drop-shadow-color: #7C5CFC18;
-                TouchArea { clicked => { AppState.view = "studio"; } }
-                VerticalBox { padding: 16px; spacing: 8px;
-                    HorizontalBox { spacing: 10px;
-                        Rectangle { width: 36px; height: 36px; border-radius: 10px; background: Theme.purple; Text { text: "⬢"; font-size: 16px; color: white; horizontal-alignment: center; vertical-alignment: center; } }
-                        VerticalBox { spacing: 2px;
-                            Text { text: AppState.lang == "ru" ? "AXIOM STUDIO — ГЛАВНОЕ" : "AXIOM STUDIO — PRIMARY"; font-size: 9px; font-weight: 700; color: Theme.purple2; letter-spacing: 1px; }
-                            Text { text: AppState.lang == "ru" ? "Создавай и экспериментируй" : "Create & experiment"; font-size: 14px; font-weight: 700; color: Theme.text; }
+                VerticalBox { padding: 12px; spacing: 7px;
+                    HorizontalBox { spacing: 8px;
+                        Rectangle { width: 28px; height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border;
+                            Text { text: "◐"; font-size: 14px; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; } }
+                        VerticalBox { spacing: 1px;
+                            Text { text: "STUDY MODE"; font-size: 8px; font-weight: 700; color: Theme.muted; letter-spacing: 0.8px; }
+                            Text { text: AppState.lang == "ru" ? "8 курсов • прогресс" : "8 courses • progress"; font-size: 12px; font-weight: 700; color: Theme.text; }
                         }
                         Rectangle {}
-                        Rectangle { width: 46px; height: 22px; border-radius: 999px; background: Theme.purple;
-                            Text { text: "NEW"; font-size: 9px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; } }
+                        Text { text: "34%"; font-size: 10px; font-weight: 700; color: Theme.purple2; vertical-alignment: center; }
                     }
-                    Text { text: AppState.lang == "ru" ? "Стены, комнаты, колонны, балки. Перетаскивание, ресайз, материалы — локально." : "Walls, rooms, columns, beams. Drag, resize, materials — locally saved."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
-                    Rectangle { height: 6px; border-radius: 3px; background: #7C5CFC22; Rectangle { width: 62%; height: 100%; background: Theme.purple; border-radius: 3px; } }
-                    HorizontalBox { spacing: 6px; alignment: space-between;
-                        Text { text: AppState.lang == "ru" ? "Открыть Studio →" : "Open Studio →"; font-size: 11px; font-weight: 700; color: Theme.purple2; vertical-alignment: center; }
-                        Text { text: AppState.project-name + " • " + AppState.elements.length; font-size: 10px; color: Theme.muted; vertical-alignment: center; }
+                    VerticalBox { spacing: 4px;
+                        Rectangle { height: 26px; background: #ffffff06; border-radius: 8px;
+                            HorizontalBox { padding: 6px; spacing: 6px;
+                                Rectangle { width: 16px; height: 16px; border-radius: 8px; background: Theme.purple; Text { text: "✓"; font-size: 8px; color: white; horizontal-alignment: center; vertical-alignment: center; } }
+                                Text { text: AppState.lang == "ru" ? "Основы — Что такое архитектура?" : "Fundamentals — What is Architecture?"; font-size: 10px; color: Theme.text; vertical-alignment: center; }
+                                Rectangle {}
+                                Text { text: "8m"; font-size: 9px; color: Theme.muted2; vertical-alignment: center; }
+                            }
+                        }
+                        Rectangle { height: 26px; background: #ffffff06; border-radius: 8px;
+                            HorizontalBox { padding: 6px; spacing: 6px;
+                                Rectangle { width: 16px; height: 16px; border-radius: 8px; background: #ffffff12; border-width: 1px; border-color: Theme.border; Text { text: "2"; font-size: 8px; font-weight: 700; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; } }
+                                Text { text: AppState.lang == "ru" ? "Порядок и пропорции" : "Order & Proportion"; font-size: 10px; color: Theme.text; vertical-alignment: center; }
+                                Rectangle {}
+                                Text { text: "10m"; font-size: 9px; color: Theme.muted2; vertical-alignment: center; }
+                            }
+                        }
+                        Rectangle { height: 26px; background: Theme.purple; border-radius: 8px;
+                            HorizontalBox { padding: 6px; spacing: 6px;
+                                Rectangle { width: 16px; height: 16px; border-radius: 8px; background: white; Text { text: "3"; font-size: 8px; font-weight: 700; color: Theme.purple; horizontal-alignment: center; vertical-alignment: center; } }
+                                Text { text: AppState.lang == "ru" ? "Свет и материал →" : "Light & Material →"; font-size: 10px; font-weight: 700; color: white; vertical-alignment: center; }
+                                Rectangle {}
+                                Text { text: "9m • next"; font-size: 9px; color: #FFFFFFCC; vertical-alignment: center; }
+                            }
+                        }
                     }
+                    Rectangle { height: 4px; border-radius: 2px; background: #ffffff12; Rectangle { width: 34%; height: 100%; background: Theme.purple; border-radius: 2px; } }
+                    Text { text: AppState.lang == "ru" ? "Продолжить →  Войти в Study" : "Continue →  Enter Study"; font-size: 10px; font-weight: 700; color: Theme.text; horizontal-alignment: center; }
                 }
-                property <length> ty2: 0px; y: ty2; animate y { duration: 180ms; }
-                TouchArea { mouse-cursor: pointer; moved => { parent.ty2 = self.has-hover ? -2px : 0px; } }
+                property <length> ty: 0px; y: ty; animate y { duration: 160ms; }
+                TouchArea { mouse-cursor: pointer; moved => { parent.ty = self.has-hover ? -1px : 0px; } }
+            }
+            // STUDIO card — workspace preview (dense, alive)
+            Rectangle {
+                background: #0F1016; border-width: 1px; border-color: Theme.purple; border-radius: 14px; drop-shadow-blur: 14px; drop-shadow-color: #7C5CFC16; clip: true;
+                TouchArea { clicked => { AppState.view = "studio"; } }
+                VerticalBox { padding: 12px; spacing: 7px;
+                    HorizontalBox { spacing: 8px;
+                        Rectangle { width: 28px; height: 28px; border-radius: 8px; background: Theme.purple; Text { text: "⬢"; font-size: 14px; color: white; horizontal-alignment: center; vertical-alignment: center; } }
+                        VerticalBox { spacing: 1px;
+                            Text { text: "AXIOM STUDIO"; font-size: 9px; font-weight: 700; color: Theme.purple2; letter-spacing: 0.8px; }
+                            Text { text: AppState.lang == "ru" ? "Рабочее пространство" : "Creative workspace"; font-size: 12px; font-weight: 700; color: Theme.text; }
+                        }
+                        Rectangle {}
+                        Rectangle { width: 36px; height: 18px; border-radius: 999px; background: Theme.purple; Text { text: "LIVE"; font-size: 7px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; } }
+                    }
+                    Rectangle { height: 76px; background: #0A0A0F; border-width: 1px; border-color: Theme.border; border-radius: 10px; clip: true;
+                        Rectangle { width: 100%; height: 100%; background: #7C5CFC08; }
+                        Rectangle { x: 12px; y: 14px; width: 60px; height: 34px; background: #A8A29E; border-width: 1px; border-color: #ffffff14; border-radius: 3px; Text { text: "ROOM"; font-size: 7px; font-weight: 700; color: #1A1A1A; horizontal-alignment: center; vertical-alignment: center; } }
+                        Rectangle { x: 80px; y: 18px; width: 44px; height: 7px; background: #B45309; border-radius: 2px; }
+                        Rectangle { x: 80px; y: 28px; width: 44px; height: 7px; background: #94A3B8; border-radius: 2px; }
+                        Rectangle { x: 16px; y: 52px; width: 40px; height: 5px; background: #7DD3FC80; border-radius: 2px; }
+                        Rectangle { x: 112px; y: 42px; width: 12px; height: 12px; background: Theme.purple; border-radius: 4px; border-width: 1px; border-color: white; Text { text: "+"; font-size: 8px; color: white; horizontal-alignment: center; vertical-alignment: center; } }
+                        Rectangle { x: 135px; y: 14px; width: 30px; height: 20px; background: #B48A46; border-radius: 3px; }
+                        Rectangle { x: 11px; y: 13px; width: 62px; height: 36px; border-width: 1px; border-color: Theme.purple; border-radius: 4px; background: #7C5CFC0A; }
+                    }
+                    HorizontalBox { spacing: 6px;
+                        Rectangle { width: 52px; height: 18px; border-radius: 999px; background: Theme.purple; Text { text: "Open →"; font-size: 9px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; } }
+                        Text { text: AppState.project-name + " • " + AppState.elements.length + " • 900×600"; font-size: 9px; color: Theme.muted; vertical-alignment: center; }
+                        Rectangle {}
+                        Text { text: "drag • resize"; font-size: 8px; color: Theme.muted2; vertical-alignment: center; }
+                    }
+                    Rectangle { height: 4px; border-radius: 2px; background: #7C5CFC22; Rectangle { width: 68%; height: 100%; background: Theme.purple; border-radius: 2px; } }
+                }
+                property <length> ty2: 0px; y: ty2; animate y { duration: 160ms; }
+                TouchArea { mouse-cursor: pointer; moved => { parent.ty2 = self.has-hover ? -1px : 0px; } }
             }
         }
         // RECENT + QUICK
@@ -437,6 +470,86 @@ component HomePage inherits Rectangle {
                             Text { text: AppState.lang == "ru" ? "Исследовать темы →" : "Explore topics →"; font-size: 11px; font-weight: 600; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
                 }
                 Text { text: AppState.lang == "ru" ? "Подсказка: в Studio выбери инструмент и кликни по канвасу." : "Tip: pick a tool in Studio and click the canvas."; font-size: 10px; color: Theme.muted2; wrap: word-wrap; }
+            }
+        }
+        // structure/materials — dense filler
+        HorizontalBox { spacing: 10px; height: 72px;
+            Rectangle { background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 12px;
+                VerticalBox { padding: 9px; spacing: 4px;
+                    Text { text: "STRUCTURE"; font-size: 8px; font-weight: 700; color: Theme.muted; letter-spacing: 1px; }
+                    HorizontalBox { spacing: 7px;
+                        Rectangle { width: 30px; height: 30px; background: #0A0A0F; border-width: 1px; border-color: Theme.border; border-radius: 7px; Text { text: "▭"; font-size: 13px; color: #A8A29E; horizontal-alignment: center; vertical-alignment: center; } }
+                        VerticalBox { spacing: 1px;
+                            Text { text: "Loads • 8m"; font-size: 10px; font-weight: 700; color: Theme.text; }
+                            Text { text: "Dead, live, wind"; font-size: 9px; color: Theme.muted; }
+                        }
+                    }
+                    Rectangle { height: 4px; border-radius: 2px; background: #ffffff12; Rectangle { width: 68%; height: 100%; background: Theme.purple; border-radius: 2px; } }
+                }
+            }
+            Rectangle { background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 12px;
+                VerticalBox { padding: 9px; spacing: 4px;
+                    Text { text: "MATERIALS LAB"; font-size: 8px; font-weight: 700; color: Theme.muted; letter-spacing: 1px; }
+                    HorizontalBox { spacing: 4px;
+                        Rectangle { width: 26px; height: 18px; background: #A8A29E; border-radius: 4px; }
+                        Rectangle { width: 26px; height: 18px; background: #B45309; border-radius: 4px; }
+                        Rectangle { width: 26px; height: 18px; background: #7DD3FC; border-radius: 4px; }
+                        Rectangle { width: 26px; height: 18px; background: #B48A46; border-radius: 4px; }
+                        Rectangle { width: 26px; height: 18px; background: #94A3B8; border-radius: 4px; }
+                    }
+                    Text { text: "5 mats • realtime preview"; font-size: 9px; color: Theme.purple2; }
+                }
+            }
+            Rectangle { width: 200px; background: #7C5CFC14; border-width: 1px; border-color: #7C5CFC30; border-radius: 12px;
+                VerticalBox { padding: 9px; spacing: 4px;
+                    Text { text: "NEXT STEP"; font-size: 8px; font-weight: 700; color: Theme.purple2; letter-spacing: 1px; }
+                    Text { text: AppState.lang == "ru" ? "Поставь первую стену" : "Place your first wall"; font-size: 10px; font-weight: 700; color: Theme.text; }
+                    TouchArea { clicked => { AppState.view = "studio"; } Rectangle { height: 22px; border-radius: 999px; background: Theme.purple; Text { text: "→ Studio"; font-size: 10px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; } } }
+                }
+            }
+        }
+        // activity — dense, fills gap
+        Rectangle { height: 52px; background: #12131A; border-width: 1px; border-color: Theme.border; border-radius: 12px;
+            HorizontalBox { padding: 10px; spacing: 12px;
+                Text { text: AppState.lang == "ru" ? "Сегодня" : "Today"; font-size: 10px; font-weight: 700; color: Theme.purple2; vertical-alignment: center; }
+                Text { text: "—"; font-size: 10px; color: Theme.muted2; vertical-alignment: center; }
+                Text { text: AppState.lang == "ru" ? "Изучи «Свет и материал», собери павильон в Studio" : "Study “Light & Material”, then build a pavilion in Studio"; font-size: 11px; color: Theme.text; vertical-alignment: center; }
+                Rectangle {}
+                TouchArea { clicked => { AppState.view = "study"; } Rectangle { width: 84px; height: 24px; border-radius: 999px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "Continue →"; font-size: 10px; font-weight: 700; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+            }
+        }
+        // footer dense
+        Rectangle { height: 56px; background: #0A0A0F; border-width: 1px; border-color: Theme.border; border-radius: 12px;
+            HorizontalBox { padding: 10px; spacing: 12px;
+                VerticalBox { spacing: 2px;
+                    Text { text: "AXIOM OS • PREMIUM — v0.1.0 • Native Slint • GPU • Offline"; font-size: 9px; font-weight: 700; color: Theme.muted; }
+                    Text { text: "Canvas 900×600 • 8px grid • 5 materials • autosave"; font-size: 9px; color: Theme.purple2; }
+                }
+                Rectangle {}
+                Text { text: "● " + AppState.project-name + " • " + AppState.elements.length + " els."; font-size: 10px; color: Theme.muted; vertical-alignment: center; }
+            }
+        }
+        // bottom filler — ensures no giant void, dense stats
+        HorizontalBox { spacing: 10px; height: 74px;
+            Rectangle { background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 12px;
+                VerticalBox { padding: 9px; spacing: 3px;
+                    Text { text: "PROGRESS"; font-size: 8px; font-weight: 700; color: Theme.muted; letter-spacing: 1px; }
+                    Text { text: "34% • 3/14 lessons"; font-size: 11px; font-weight: 700; color: Theme.text; }
+                    Rectangle { height: 4px; border-radius: 2px; background: #ffffff12; Rectangle { width: 34%; height: 100%; background: Theme.purple; border-radius: 2px; } }
+                }
+            }
+            Rectangle { background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 12px;
+                VerticalBox { padding: 9px; spacing: 3px;
+                    Text { text: "STUDIO STATS"; font-size: 8px; font-weight: 700; color: Theme.muted; letter-spacing: 1px; }
+                    Text { text: AppState.elements.length + " elements • " + AppState.project-name; font-size: 11px; font-weight: 700; color: Theme.text; }
+                    Text { text: "Wall • Room • Column • Beam"; font-size: 9px; color: Theme.muted2; }
+                }
+            }
+            Rectangle { width: 200px; background: #7C5CFC0A; border-width: 1px; border-color: #7C5CFC22; border-radius: 12px;
+                VerticalBox { padding: 9px; spacing: 3px; alignment: center;
+                    Text { text: "AXIOM"; font-size: 10px; font-weight: 700; color: Theme.purple2; horizontal-alignment: center; }
+                    Text { text: "Built for architects"; font-size: 9px; color: Theme.muted; horizontal-alignment: center; }
+                }
             }
         }
     }
