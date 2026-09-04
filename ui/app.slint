@@ -1,8 +1,8 @@
-import { HorizontalBox, VerticalBox, GridBox } from "std-widgets.slint";
+import { HorizontalBox, VerticalBox } from "std-widgets.slint";
 
 struct StudioElement {
     id: string,
-    kind: string, // wall, room, column, beam
+    kind: string,
     x: length,
     y: length,
     w: length,
@@ -12,28 +12,23 @@ struct StudioElement {
 }
 
 export global AppState {
-    in-out property <string> view: "home"; // home, study, explore, studio
+    in-out property <string> view: "home";
     in-out property <string> lang: "en";
-    in-out property <string> studio-tool: "select"; // select, wall, room, column, beam
+    in-out property <string> studio-tool: "select";
     in-out property <string> studio-selected: "";
     in-out property <string> project-name: "Pavilion 01";
-    in-out property <length> canvas-w: 900px;
-    in-out property <length> canvas-h: 600px;
     in-out property <[StudioElement]> elements;
-    callback request-new-element(string, length, length);
     callback request-select(string);
     callback request-move(string, length, length);
     callback request-resize(string, length, length);
     callback request-material(string, string);
     callback request-delete(string);
     callback request-duplicate(string);
-    callback request-update-pos(string, length, length);
     callback request-canvas-click(length, length);
     callback request-save();
     callback request-new-project();
 }
 
-// Colors — premium black+purple
 export global Theme {
     out property <color> bg: #07070A;
     out property <color> surface: #12131A;
@@ -49,19 +44,13 @@ export global Theme {
     out property <color> purple-glow: #7C5CFC28;
 }
 
+// Titlebar
 component Titlebar inherits Rectangle {
     height: 38px;
     background: #0C0C11;
-    border-color: Theme.border;
-    border-width: 0; // bottom only
     HorizontalBox {
-        padding: 0;
-        padding-left: 14px;
-        padding-right: 14px;
-        alignment: space-between;
-        HorizontalBox {
-            spacing: 10px;
-            alignment: start;
+        padding: 0; padding-left: 14px; padding-right: 14px; alignment: space-between;
+        HorizontalBox { spacing: 10px; alignment: start;
             Rectangle { width: 12px; height: 12px; border-radius: 6px; background: #FF5F56; border-width: 1px; border-color: #00000014; }
             Rectangle { width: 12px; height: 12px; border-radius: 6px; background: #FFBD2E; border-width: 1px; border-color: #00000014; }
             Rectangle { width: 12px; height: 12px; border-radius: 6px; background: #27C93F; border-width: 1px; border-color: #00000014; }
@@ -69,9 +58,7 @@ component Titlebar inherits Rectangle {
             Text { text: "AXIOM"; font-size: 12px; font-weight: 700; color: Theme.text; vertical-alignment: center; }
             Text { text: "— Architecture Learning OS"; font-size: 10px; color: Theme.muted; vertical-alignment: center; }
         }
-        HorizontalBox {
-            spacing: 8px;
-            alignment: end;
+        HorizontalBox { spacing: 8px; alignment: end;
             Rectangle { width: 6px; height: 6px; border-radius: 3px; background: #27C93F; }
             Text { text: "Local • Offline Ready"; font-size: 11px; color: Theme.muted; vertical-alignment: center; }
             Text { text: "|"; font-size: 11px; color: #ffffff30; vertical-alignment: center; }
@@ -81,70 +68,78 @@ component Titlebar inherits Rectangle {
     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
 }
 
+// Sidebar
 component Sidebar inherits Rectangle {
     width: 88px;
     background: #12131AEE;
-    border-color: Theme.border;
-    border-width: 1px;
-    border-radius: 0;
+    border-width: 1px; border-color: Theme.border;
+    property <bool> ready: false;
+    opacity: ready ? 1 : 0;
+    animate opacity { duration: 340ms; easing: ease-out; }
+    Timer { interval: 90ms; running: !root.ready; triggered => { root.ready = true; } }
     VerticalBox {
-        padding: 14px;
-        spacing: 8px;
-        alignment: start;
+        padding: 14px; spacing: 8px; alignment: start;
         Rectangle {
-            width: 44px; height: 44px; border-radius: 12px; background: Theme.purple; drop-shadow-blur: 18px; drop-shadow-color: Theme.purple-glow;
+            width: 44px; height: 44px; border-radius: 12px; background: Theme.purple;
+            drop-shadow-blur: 18px; drop-shadow-color: Theme.purple-glow;
             Text { text: "A"; font-size: 17px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; }
+            // logo scale on ready
+            property <length> s: ready ? 44px : 38px;
+            animate s { duration: 420ms; easing: ease-out; }
         }
-        Rectangle { height: 8px; }
-        VerticalBox {
-            spacing: 8px;
+        Rectangle { height: 6px; }
+        VerticalBox { spacing: 7px;
             TouchArea { clicked => { AppState.view = "home"; }
                 Rectangle {
-                    height: 56px; border-radius: 14px;
+                    height: 54px; border-radius: 14px;
                     background: AppState.view == "home" ? #7C5CFC28 : transparent;
                     border-width: 1px; border-color: AppState.view == "home" ? #7C5CFC60 : transparent;
                     Text { text: "⌖\nHome"; font-size: 10px; font-weight: 700; color: AppState.view == "home" ? #ECE9FF : Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
-                    animate background { duration: 220ms; easing: ease-in-out; }
+                    animate background { duration: 180ms; }
                 }
             }
             TouchArea { clicked => { AppState.view = "study"; }
                 Rectangle {
-                    height: 56px; border-radius: 14px;
+                    height: 54px; border-radius: 14px;
                     background: AppState.view == "study" ? Theme.purple : transparent;
-                    border-width: 1px; border-color: AppState.view == "study" ? transparent : transparent;
                     Text { text: "◐\nStudy"; font-size: 10px; font-weight: 700; color: AppState.view == "study" ? white : Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+                    animate background { duration: 180ms; }
                 }
             }
             TouchArea { clicked => { AppState.view = "studio"; }
                 Rectangle {
                     height: 58px; border-radius: 14px;
-                    background: AppState.view == "studio" ? Theme.purple : #00000000;
-                    drop-shadow-blur: AppState.view == "studio" ? 20px : 0px; drop-shadow-color: Theme.purple-glow;
+                    background: AppState.view == "studio" ? Theme.purple : transparent;
                     border-width: 1px; border-color: AppState.view == "studio" ? transparent : Theme.border;
+                    drop-shadow-blur: AppState.view == "studio" ? 18px : 0px; drop-shadow-color: Theme.purple-glow;
                     Text { text: "⬢\nStudio"; font-size: 10px; font-weight: 700; color: AppState.view == "studio" ? white : Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
-                    animate background { duration: 220ms; }
+                    animate background { duration: 180ms; }
                 }
             }
             TouchArea { clicked => { AppState.view = "explore"; }
                 Rectangle {
-                    height: 56px; border-radius: 14px;
+                    height: 54px; border-radius: 14px;
                     background: AppState.view == "explore" ? #7C5CFC28 : transparent;
                     border-width: 1px; border-color: AppState.view == "explore" ? #7C5CFC60 : transparent;
                     Text { text: "⬣\nExplore"; font-size: 10px; font-weight: 700; color: AppState.view == "explore" ? #ECE9FF : Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+                    animate background { duration: 180ms; }
                 }
             }
         }
-        Rectangle { height: 12px; }
-        VerticalBox {
-            spacing: 6px;
+        Rectangle { height: 10px; }
+        VerticalBox { spacing: 6px;
             Text { text: "Language"; font-size: 8px; color: Theme.muted; horizontal-alignment: center; letter-spacing: 1px; }
             TouchArea { clicked => { AppState.lang = "en"; }
                 Rectangle { height: 28px; border-radius: 14px; background: AppState.lang == "en" ? Theme.purple : #ffffff08; border-width: 1px; border-color: AppState.lang == "en" ? Theme.purple : Theme.border;
-                    Text { text: "EN"; font-size: 11px; font-weight: 700; color: AppState.lang == "en" ? white : Theme.muted; horizontal-alignment: center; vertical-alignment: center; } }
+                    Text { text: "EN"; font-size: 11px; font-weight: 700; color: AppState.lang == "en" ? white : Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+                    animate background { duration: 160ms; }
+                }
             }
             TouchArea { clicked => { AppState.lang = "ru"; }
                 Rectangle { height: 28px; border-radius: 14px; background: AppState.lang == "ru" ? Theme.purple : #ffffff08; border-width: 1px; border-color: AppState.lang == "ru" ? Theme.purple : Theme.border;
-                    Text { text: "RU"; font-size: 11px; font-weight: 700; color: AppState.lang == "ru" ? white : Theme.muted; horizontal-alignment: center; vertical-alignment: center; } }
+                    Text { text: "RU"; font-size: 11px; font-weight: 700; color: AppState.lang == "ru" ? white : Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+                    animate background { duration: 160ms; }
+                }
             }
         }
     }
@@ -160,301 +155,320 @@ component ToolButton inherits TouchArea {
         border-radius: 12px;
         background: active ? Theme.purple : #ffffff06;
         border-width: 1px; border-color: active ? Theme.purple : Theme.border;
-        drop-shadow-blur: active ? 16px : 0px; drop-shadow-color: Theme.purple-glow;
-        VerticalBox {
-            padding: 6px;
-            spacing: 2px;
+        drop-shadow-blur: active ? 14px : 0px; drop-shadow-color: Theme.purple-glow;
+        VerticalBox { padding: 6px; spacing: 2px;
             Text { text: icon; font-size: 16px; color: active ? white : Theme.muted; horizontal-alignment: center; }
             Text { text: label; font-size: 8px; font-weight: 700; color: active ? white : Theme.muted; horizontal-alignment: center; letter-spacing: 0.6px; }
         }
-        animate background { duration: 180ms; easing: ease-in-out; }
+        animate background { duration: 160ms; }
     }
 }
 
+// --- Studio ---
 component StudioLayout inherits Rectangle {
     background: transparent;
-    HorizontalBox {
-        padding: 0;
-        spacing: 0;
+    // fade in
+    property <bool> shown: false;
+    opacity: shown ? 1 : 0; y: shown ? 0px : 8px;
+    animate opacity, y { duration: 260ms; easing: ease-out; }
+    Timer { interval: 30ms; running: !root.shown; triggered => { root.shown = true; } }
+    HorizontalBox { padding: 0; spacing: 0;
         // TOOL RAIL
-        Rectangle {
-            width: 68px;
-            background: #12131AF2;
-            border-width: 1px; border-color: Theme.border;
-            VerticalBox {
-                padding: 12px;
-                spacing: 8px;
+        Rectangle { width: 68px; background: #12131AF2; border-width: 1px; border-color: Theme.border;
+            VerticalBox { padding: 12px; spacing: 8px;
                 Text { text: "TOOLS"; font-size: 8px; font-weight: 700; color: Theme.muted; letter-spacing: 1.2px; horizontal-alignment: center; }
-                ToolButton { label: "Select"; icon: "⌖"; kind: "select"; active: AppState.studio-tool == "select"; height: 52px; }
-                ToolButton { label: "Wall"; icon: "—"; kind: "wall"; active: AppState.studio-tool == "wall"; height: 52px; }
-                ToolButton { label: "Room"; icon: "▭"; kind: "room"; active: AppState.studio-tool == "room"; height: 52px; }
-                ToolButton { label: "Column"; icon: "⬢"; kind: "column"; active: AppState.studio-tool == "column"; height: 52px; }
-                ToolButton { label: "Beam"; icon: "━"; kind: "beam"; active: AppState.studio-tool == "beam"; height: 52px; }
+                ToolButton { label: AppState.lang == "ru" ? "Выбор" : "Select"; icon: "⌖"; kind: "select"; active: AppState.studio-tool == "select"; height: 52px; }
+                ToolButton { label: AppState.lang == "ru" ? "Стена" : "Wall"; icon: "—"; kind: "wall"; active: AppState.studio-tool == "wall"; height: 52px; }
+                ToolButton { label: AppState.lang == "ru" ? "Комната" : "Room"; icon: "▭"; kind: "room"; active: AppState.studio-tool == "room"; height: 52px; }
+                ToolButton { label: AppState.lang == "ru" ? "Колонна" : "Column"; icon: "⬢"; kind: "column"; active: AppState.studio-tool == "column"; height: 52px; }
+                ToolButton { label: AppState.lang == "ru" ? "Балка" : "Beam"; icon: "━"; kind: "beam"; active: AppState.studio-tool == "beam"; height: 52px; }
                 Rectangle { height: 1px; background: Theme.border; }
                 TouchArea { clicked => { if (AppState.studio-selected != "") { AppState.request-duplicate(AppState.studio-selected); } }
-                    Rectangle { height: 36px; border-radius: 10px; background: #ffffff06; border-width: 1px; border-color: Theme.border;
-                        Text { text: "⧉ Dup"; font-size: 10px; font-weight: 600; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { height: 34px; border-radius: 10px; background: AppState.studio-selected != "" ? #ffffff08 : #ffffff04; border-width: 1px; border-color: Theme.border; opacity: AppState.studio-selected != "" ? 1 : 0.45;
+                        Text { text: "⧉ Dup"; font-size: 10px; font-weight: 600; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+                    }
                 }
                 TouchArea { clicked => { if (AppState.studio-selected != "") { AppState.request-delete(AppState.studio-selected); } }
-                    Rectangle { height: 36px; border-radius: 10px; background: #FF5F5612; border-width: 1px; border-color: #FF5F5630;
-                        Text { text: "✕ Del"; font-size: 10px; font-weight: 600; color: #FF8A8A; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { height: 34px; border-radius: 10px; background: AppState.studio-selected != "" ? #FF5F5612 : #ffffff04; border-width: 1px; border-color: AppState.studio-selected != "" ? #FF5F5630 : Theme.border; opacity: AppState.studio-selected != "" ? 1 : 0.45;
+                        Text { text: "✕ Del"; font-size: 10px; font-weight: 600; color: AppState.studio-selected != "" ? #FF8A8A : Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+                    }
                 }
                 Rectangle { }
                 TouchArea { clicked => { AppState.request-save(); }
-                    Rectangle { height: 36px; border-radius: 10px; background: Theme.purple; Text { text: "💾 Save"; font-size: 10px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; } }
+                    Rectangle { height: 36px; border-radius: 10px; background: Theme.purple; drop-shadow-blur: 12px; drop-shadow-color: Theme.purple-glow;
+                        Text { text: AppState.lang == "ru" ? "💾 Сохранить" : "💾 Save"; font-size: 10px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; }
+                    }
                 }
             }
         }
         // CANVAS
-        Rectangle {
-            background: Theme.bg;
-            VerticalBox {
-                padding: 12px;
-                spacing: 8px;
-                // top bar
-                HorizontalBox {
-                    height: 32px;
-                    spacing: 8px;
+        Rectangle { background: Theme.bg;
+            VerticalBox { padding: 12px; spacing: 8px;
+                HorizontalBox { height: 32px; spacing: 8px;
                     Text { text: AppState.project-name; font-size: 13px; font-weight: 700; color: Theme.text; vertical-alignment: center; }
-                    Text { text: "— " + AppState.elements.length + " elements • " + AppState.studio-tool + " • click canvas to place"; font-size: 11px; color: Theme.muted; vertical-alignment: center; }
+                    Text { text: "— " + AppState.elements.length + (AppState.lang == "ru" ? " объектов • " : " elements • ") + AppState.studio-tool + (AppState.lang == "ru" ? " • кликни по полю" : " • click canvas"); font-size: 11px; color: Theme.muted; vertical-alignment: center; }
                     Rectangle { }
                     TouchArea { clicked => { AppState.request-new-project(); }
-                        Rectangle { width: 90px; border-radius: 999px; background: #ffffff08; border-width: 1px; border-color: Theme.border;
-                            Text { text: "+ New"; font-size: 11px; font-weight: 600; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } }
-                    }
-                }
-                // canvas area with grid
-                Rectangle {
-                    background: #0E0E14;
-                    border-width: 1px; border-color: Theme.border; border-radius: 16px;
-                    clip: true;
-                    // grid lines — simple overlay
-                    // actual canvas
-                    Rectangle {
-                        x: 0; y: 0; width: parent.width; height: parent.height;
-                        TouchArea {
-                            clicked => { AppState.request-canvas-click(self.mouse-x, self.mouse-y); }
-                            // elements
-                            for el in AppState.elements : Rectangle {
-                                x: el.x;
-                                y: el.y;
-                                width: el.w;
-                                height: el.h;
-                                background: el.material == "concrete" ? #A8A29E : el.material == "brick" ? #B45309 : el.material == "glass" ? #7DD3FC80 : el.material == "timber" ? #B48A46 : #94A3B8;
-                                border-width: el.selected ? 2px : 1px;
-                                border-color: el.selected ? Theme.purple : #ffffff14;
-                                border-radius: el.kind == "column" ? 8px : 4px;
-                                drop-shadow-blur: el.selected ? 14px : 0px; drop-shadow-color: Theme.purple-glow;
-                                // selection glow
-                                Rectangle {
-                                    width: 100%; height: 100%; border-radius: parent.border-radius;
-                                    background: el.selected ? #7C5CFC14 : transparent;
-                                    animate background { duration: 180ms; }
-                                }
-                                Text {
-                                    text: el.kind == "room" ? "ROOM" : el.kind == "wall" ? "WALL" : el.kind == "column" ? "⬢" : "BEAM";
-                                    font-size: el.kind == "room" ? 10px : 8px; font-weight: 700;
-                                    color: #ffffffB0; horizontal-alignment: center; vertical-alignment: center;
-                                }
-                                // resize handle (bottom-right)
-                                if (el.selected): Rectangle {
-                                    x: parent.width - 10px; y: parent.height - 10px; width: 10px; height: 10px;
-                                    background: Theme.purple; border-radius: 3px; border-width: 1px; border-color: white;
-                                    TouchArea {
-                                        property <length> start-x;
-                                        property <length> start-y;
-                                        property <length> start-w;
-                                        property <length> start-h;
-                                        pointer-event => {
-                                            if (self.pressed) {
-                                                start-x = self.mouse-x;
-                                                start-y = self.mouse-y;
-                                                start-w = el.w;
-                                                start-h = el.h;
-                                            }
-                                        }
-                                        moved => {
-                                            if (self.pressed) {
-                                                AppState.request-resize(el.id, start-w + (self.mouse-x - start-x), start-h + (self.mouse-y - start-y));
-                                            }
-                                        }
-                                    }
-                                }
-                                TouchArea {
-                                    property <length> drag-off-x;
-                                    property <length> drag-off-y;
-                                    clicked => { AppState.request-select(el.id); }
-                                    pointer-event => {
-                                        if (self.pressed) {
-                                            drag-off-x = self.mouse-x;
-                                            drag-off-y = self.mouse-y;
-                                            AppState.request-select(el.id);
-                                        }
-                                    }
-                                    moved => {
-                                        if (self.pressed) {
-                                            AppState.request-move(el.id, self.mouse-x - drag-off-x, self.mouse-y - drag-off-y);
-                                            drag-off-x = self.mouse-x;
-                                            drag-off-y = self.mouse-y;
-                                        }
-                                    }
-                                }
-                                animate x { duration: 0ms; }
-                                animate y { duration: 0ms; }
-                            }
-                            // grid dots — visual only
-                            Rectangle {
-                                width: 100%; height: 100%;
-                                // semi-transparent grid overlay via repeating? simplistic: border pattern
-                                // we keep minimal to avoid perf hit
-                            }
+                        Rectangle { width: 92px; border-radius: 999px; background: #ffffff08; border-width: 1px; border-color: Theme.border;
+                            Text { text: AppState.lang == "ru" ? "+ Проект" : "+ New"; font-size: 11px; font-weight: 600; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; }
                         }
                     }
-                    // ruler hints
-                    Text { x: 8px; y: 8px; text: "Canvas 900×600 — grid 8px snap — drag to move, handle to resize"; font-size: 9px; color: #ffffff40; }
+                }
+                Rectangle { background: #0E0E14; border-width: 1px; border-color: Theme.border; border-radius: 16px; clip: true;
+                    // background click layer
+                    Rectangle { width: 100%; height: 100%;
+                        TouchArea {
+                            clicked => { AppState.request-canvas-click(self.mouse-x, self.mouse-y); }
+                        }
+                    }
+                    // elements layer — separate from background so selection works
+                    for el in AppState.elements : Rectangle {
+                        x: el.x; y: el.y; width: el.w; height: el.h;
+                        background: el.material == "concrete" ? #A8A29E : el.material == "brick" ? #B45309 : el.material == "glass" ? #7DD3FC80 : el.material == "timber" ? #B48A46 : #94A3B8;
+                        border-width: el.selected ? 2px : 1px; border-color: el.selected ? Theme.purple : #ffffff14;
+                        border-radius: el.kind == "column" ? 8px : 4px;
+                        drop-shadow-blur: el.selected ? 14px : 0px; drop-shadow-color: Theme.purple-glow;
+                        animate border-color, background { duration: 160ms; }
+                        Rectangle { width: 100%; height: 100%; border-radius: parent.border-radius; background: el.selected ? #7C5CFC14 : transparent; }
+                        Text { text: el.kind == "room" ? "ROOM" : el.kind == "wall" ? "WALL" : el.kind == "column" ? "⬢" : "BEAM"; font-size: el.kind == "room" ? 10px : 8px; font-weight: 700; color: #ffffffB0; horizontal-alignment: center; vertical-alignment: center; }
+                        if (el.selected): Rectangle {
+                            x: parent.width - 10px; y: parent.height - 10px; width: 10px; height: 10px; background: Theme.purple; border-radius: 3px; border-width: 1px; border-color: white;
+                            TouchArea {
+                                property <length> sx; property <length> sy; property <length> sw; property <length> sh;
+                                pointer-event => { if (self.pressed) { sx = self.mouse-x; sy = self.mouse-y; sw = el.w; sh = el.h; } }
+                                moved => { if (self.pressed) { AppState.request-resize(el.id, sw + (self.mouse-x - sx), sh + (self.mouse-y - sy)); } }
+                            }
+                        }
+                        // drag/select
+                        TouchArea {
+                            property <length> dx; property <length> dy;
+                            clicked => { AppState.request-select(el.id); }
+                            pointer-event => { if (self.pressed) { dx = self.mouse-x; dy = self.mouse-y; AppState.request-select(el.id); } }
+                            moved => { if (self.pressed) { AppState.request-move(el.id, self.mouse-x - dx, self.mouse-y - dy); dx = self.mouse-x; dy = self.mouse-y; } }
+                        }
+                    }
+                    Text { x: 8px; y: 8px; text: AppState.lang == "ru" ? "Канвас 900×600 — сетка 8px — перетащи, ручка снизу-справа" : "Canvas 900×600 — 8px snap — drag to move, handle to resize"; font-size: 9px; color: #ffffff40; }
                 }
             }
         }
         // INSPECTOR
-        Rectangle {
-            width: 300px;
-            background: #12131A;
-            border-width: 1px; border-color: Theme.border;
-            VerticalBox {
-                padding: 16px;
-                spacing: 12px;
+        Rectangle { width: 300px; background: #12131A; border-width: 1px; border-color: Theme.border;
+            VerticalBox { padding: 16px; spacing: 12px;
                 Text { text: "INSPECTOR"; font-size: 10px; font-weight: 700; color: Theme.muted; letter-spacing: 1.4px; }
-                if (AppState.studio-selected == ""): VerticalBox {
-                    spacing: 10px;
-                    Rectangle { height: 80px; border-radius: 12px; background: #ffffff04; border-width: 1px; border-color: Theme.border;
-                        VerticalBox {
-                            padding: 12px;
-                            Text { text: "No selection"; font-size: 12px; font-weight: 600; color: Theme.muted; }
-                            Text { text: "Select an element on canvas or place a new one with tools."; font-size: 11px; color: Theme.muted2; wrap: word-wrap; }
+                if (AppState.studio-selected == ""): VerticalBox { spacing: 10px;
+                    Rectangle { height: 74px; border-radius: 12px; background: #ffffff04; border-width: 1px; border-color: Theme.border;
+                        VerticalBox { padding: 12px; spacing: 4px;
+                            Text { text: AppState.lang == "ru" ? "Нет выбора" : "No selection"; font-size: 12px; font-weight: 600; color: Theme.muted; }
+                            Text { text: AppState.lang == "ru" ? "Выбери объект на канвасе или создай новый инструментом." : "Select an element or place a new one with tools."; font-size: 11px; color: Theme.muted2; wrap: word-wrap; }
                         }
                     }
-                    Text { text: "Project: " + AppState.project-name; font-size: 11px; color: Theme.muted; }
-                    Text { text: "Tip: Room = concrete slab with subtle border, Wall/Beam = linear, Column = square."; font-size: 10px; color: Theme.muted2; wrap: word-wrap; }
+                    Text { text: (AppState.lang == "ru" ? "Проект: " : "Project: ") + AppState.project-name; font-size: 11px; color: Theme.muted; }
+                    Text { text: AppState.lang == "ru" ? "Подсказка: Room — плита, Wall/Beam — линия, Column — квадрат." : "Tip: Room = slab, Wall/Beam = linear, Column = square."; font-size: 10px; color: Theme.muted2; wrap: word-wrap; }
                 }
-                if (AppState.studio-selected != ""): VerticalBox {
-                    spacing: 10px;
-                    // find selected element — we pass via root properties mirrored by Rust
-                    // Rust updates inspector fields as separate properties for simplicity
-                    // Here we expose generic inspector bound to AppState.selected details via extra properties set from Rust
-                    Text { text: "Selection: " + AppState.studio-selected; font-size: 11px; color: Theme.purple2; }
-                    HorizontalBox {
-                        spacing: 8px;
-                        // position / size are shown via callbacks, for MVP we provide buttons to nudge
-                        VerticalBox {
-                            spacing: 4px;
-                            Text { text: "Position & Size"; font-size: 10px; font-weight: 700; color: Theme.muted; }
-                            HorizontalBox {
-                                spacing: 6px;
-                                TouchArea { clicked => { AppState.request-move(AppState.studio-selected, -8px, 0px); } Rectangle { width: 28px; height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "←"; font-size: 12px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
-                                TouchArea { clicked => { AppState.request-move(AppState.studio-selected, 8px, 0px); } Rectangle { width: 28px; height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "→"; font-size: 12px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
-                                TouchArea { clicked => { AppState.request-move(AppState.studio-selected, 0px, -8px); } Rectangle { width: 28px; height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "↑"; font-size: 12px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
-                                TouchArea { clicked => { AppState.request-move(AppState.studio-selected, 0px, 8px); } Rectangle { width: 28px; height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "↓"; font-size: 12px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
-                            }
-                            HorizontalBox {
-                                spacing: 6px;
-                                TouchArea { clicked => { AppState.request-resize(AppState.studio-selected, -12px, 0px); } Rectangle { height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "−W"; font-size: 10px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
-                                TouchArea { clicked => { AppState.request-resize(AppState.studio-selected, 12px, 0px); } Rectangle { height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "+W"; font-size: 10px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
-                                TouchArea { clicked => { AppState.request-resize(AppState.studio-selected, 0px, -12px); } Rectangle { height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "−H"; font-size: 10px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
-                                TouchArea { clicked => { AppState.request-resize(AppState.studio-selected, 0px, 12px); } Rectangle { height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "+H"; font-size: 10px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
-                            }
+                if (AppState.studio-selected != ""): VerticalBox { spacing: 10px;
+                    Text { text: (AppState.lang == "ru" ? "Выбрано: " : "Selection: ") + AppState.studio-selected; font-size: 10px; color: Theme.purple2; wrap: word-wrap; }
+                    VerticalBox { spacing: 6px;
+                        Text { text: AppState.lang == "ru" ? "Позиция и размер" : "Position & Size"; font-size: 10px; font-weight: 700; color: Theme.muted; }
+                        HorizontalBox { spacing: 6px;
+                            TouchArea { clicked => { AppState.request-move(AppState.studio-selected, -8px, 0px); } Rectangle { width: 28px; height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "←"; font-size: 12px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+                            TouchArea { clicked => { AppState.request-move(AppState.studio-selected, 8px, 0px); } Rectangle { width: 28px; height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "→"; font-size: 12px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+                            TouchArea { clicked => { AppState.request-move(AppState.studio-selected, 0px, -8px); } Rectangle { width: 28px; height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "↑"; font-size: 12px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+                            TouchArea { clicked => { AppState.request-move(AppState.studio-selected, 0px, 8px); } Rectangle { width: 28px; height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "↓"; font-size: 12px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+                        }
+                        HorizontalBox { spacing: 6px;
+                            TouchArea { clicked => { AppState.request-resize(AppState.studio-selected, -12px, 0px); } Rectangle { height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "−W"; font-size: 10px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+                            TouchArea { clicked => { AppState.request-resize(AppState.studio-selected, 12px, 0px); } Rectangle { height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "+W"; font-size: 10px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+                            TouchArea { clicked => { AppState.request-resize(AppState.studio-selected, 0px, -12px); } Rectangle { height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "−H"; font-size: 10px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+                            TouchArea { clicked => { AppState.request-resize(AppState.studio-selected, 0px, 12px); } Rectangle { height: 28px; border-radius: 8px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "+H"; font-size: 10px; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
                         }
                     }
-                    Text { text: "Material"; font-size: 10px; font-weight: 700; color: Theme.muted; }
-                    HorizontalBox {
-                        spacing: 6px;
+                    Text { text: AppState.lang == "ru" ? "Материал" : "Material"; font-size: 10px; font-weight: 700; color: Theme.muted; }
+                    HorizontalBox { spacing: 6px;
                         TouchArea { clicked => { AppState.request-material(AppState.studio-selected, "concrete"); } Rectangle { height: 32px; border-radius: 8px; background: #A8A29E; Text { text: "Concrete"; font-size: 9px; font-weight: 700; color: #1A1A1A; horizontal-alignment: center; vertical-alignment: center; } } }
                         TouchArea { clicked => { AppState.request-material(AppState.studio-selected, "brick"); } Rectangle { height: 32px; border-radius: 8px; background: #B45309; Text { text: "Brick"; font-size: 9px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; } } }
                         TouchArea { clicked => { AppState.request-material(AppState.studio-selected, "glass"); } Rectangle { height: 32px; border-radius: 8px; background: #7DD3FC; Text { text: "Glass"; font-size: 9px; font-weight: 700; color: #0C4A6E; horizontal-alignment: center; vertical-alignment: center; } } }
                     }
-                    HorizontalBox {
-                        spacing: 6px;
+                    HorizontalBox { spacing: 6px;
                         TouchArea { clicked => { AppState.request-material(AppState.studio-selected, "timber"); } Rectangle { height: 32px; border-radius: 8px; background: #B48A46; Text { text: "Timber"; font-size: 9px; font-weight: 700; color: #1A1A1A; horizontal-alignment: center; vertical-alignment: center; } } }
                         TouchArea { clicked => { AppState.request-material(AppState.studio-selected, "steel"); } Rectangle { height: 32px; border-radius: 8px; background: #94A3B8; Text { text: "Steel"; font-size: 9px; font-weight: 700; color: #0F172A; horizontal-alignment: center; vertical-alignment: center; } } }
                     }
-                    HorizontalBox {
-                        spacing: 8px;
+                    HorizontalBox { spacing: 8px;
                         TouchArea { clicked => { AppState.request-duplicate(AppState.studio-selected); } Rectangle { height: 36px; border-radius: 10px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "⧉ Duplicate"; font-size: 11px; font-weight: 600; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
                         TouchArea { clicked => { AppState.request-delete(AppState.studio-selected); } Rectangle { height: 36px; border-radius: 10px; background: #FF5F5614; border-width: 1px; border-color: #FF5F5640; Text { text: "✕ Delete"; font-size: 11px; font-weight: 600; color: #FF8A8A; horizontal-alignment: center; vertical-alignment: center; } } }
                     }
                 }
                 Rectangle { height: 1px; background: Theme.border; }
-                Text { text: "Learn → Create: study structures, then place walls/beams in Studio. Materials affect visual, future structural hints."; font-size: 10px; color: Theme.muted2; wrap: word-wrap; }
+                Text { text: AppState.lang == "ru" ? "Изучи конструкции → размести стены и балки в Studio. Материал меняет вид." : "Learn → Create: study structures, then place walls/beams in Studio."; font-size: 10px; color: Theme.muted2; wrap: word-wrap; }
             }
         }
     }
 }
 
+// Home — compact premium dashboard
 component HomePage inherits Rectangle {
     background: transparent;
+    property <bool> shown: false;
+    opacity: shown ? 1 : 0; y: shown ? 0px : 10px;
+    animate opacity, y { duration: 280ms; easing: ease-out; }
+    Timer { interval: 50ms; running: !root.shown; triggered => { root.shown = true; } }
     VerticalBox {
-        padding: 24px;
-        spacing: 16px;
-        HorizontalBox {
-            spacing: 16px;
-            VerticalBox {
-                spacing: 8px;
-                Text { text: "LEARN HOW BUILDINGS STAND."; font-size: 28px; font-weight: 700; color: Theme.text; }
-                Text { text: "A premium desktop experience for architecture fundamentals — now with a real creation workspace."; font-size: 12px; color: Theme.muted; wrap: word-wrap; }
-                HorizontalBox {
-                    spacing: 10px;
-                    TouchArea { clicked => { AppState.view = "study"; } Rectangle { height: 36px; width: 140px; border-radius: 999px; background: Theme.purple; Text { text: "Enter Study →"; font-size: 11px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; } } }
-                    TouchArea { clicked => { AppState.view = "studio"; } Rectangle { height: 36px; width: 140px; border-radius: 999px; background: #ffffff08; border-width: 1px; border-color: Theme.border; Text { text: "Open Studio →"; font-size: 11px; font-weight: 600; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+        padding: 18px; spacing: 14px;
+        // HERO compact
+        Rectangle {
+            height: 118px; background: #12131A; border-width: 1px; border-color: Theme.border; border-radius: 18px; clip: true;
+            // purple glow overlay
+            Rectangle { x: 420px; y: -30px; width: 380px; height: 180px; background: #7C5CFC14; border-radius: 999px; }
+            HorizontalBox { padding: 18px; spacing: 14px;
+                VerticalBox { spacing: 6px; alignment: start;
+                    Text { text: AppState.lang == "ru" ? "AXIOM — Учись. Строй." : "AXIOM — Learn. Build."; font-size: 9px; font-weight: 700; color: Theme.purple2; letter-spacing: 1.2px; }
+                    Text { text: AppState.lang == "ru" ? "Учи архитектуру. Строй архитектуру." : "Learn architecture. Build architecture."; font-size: 22px; font-weight: 700; color: Theme.text; }
+                    Text { text: AppState.lang == "ru" ? "Теория в Study, практика в Studio — один нативный инструмент без браузера." : "Theory in Study, practice in Studio — one native tool, no browser."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+                    HorizontalBox { spacing: 8px;
+                        Text { text: "● " + AppState.project-name; font-size: 10px; color: Theme.muted; vertical-alignment: center; }
+                        Text { text: AppState.elements.length + (AppState.lang == "ru" ? " объектов" : " elements"); font-size: 10px; color: Theme.muted2; vertical-alignment: center; }
+                    }
                 }
-            }
-            Rectangle {
-                background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 16px;
-                VerticalBox {
-                    padding: 16px;
-                    Text { text: "AXIOM OS • PREMIUM — Slint Native"; font-size: 9px; color: Theme.muted; }
-                    Text { text: "Constructive intelligence."; font-size: 16px; font-weight: 700; color: Theme.text; }
-                    Text { text: "No browser. Single binary. GPU-accelerated canvas."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+                Rectangle {}
+                VerticalBox { spacing: 8px; alignment: center; width: 220px;
+                    HorizontalBox { spacing: 8px;
+                        Rectangle { width: 48px; height: 48px; background: #ffffff08; border-width: 1px; border-color: Theme.border; border-radius: 12px;
+                            VerticalBox { padding: 6px; Text { text: "8"; font-size: 16px; font-weight: 700; color: Theme.text; horizontal-alignment: center; } Text { text: AppState.lang == "ru" ? "курсов" : "courses"; font-size: 8px; color: Theme.muted; horizontal-alignment: center; } } }
+                        Rectangle { width: 48px; height: 48px; background: #ffffff08; border-width: 1px; border-color: Theme.border; border-radius: 12px;
+                            VerticalBox { padding: 6px; Text { text: "28"; font-size: 16px; font-weight: 700; color: Theme.text; horizontal-alignment: center; } Text { text: AppState.lang == "ru" ? "уроков" : "lessons"; font-size: 8px; color: Theme.muted; horizontal-alignment: center; } } }
+                        Rectangle { width: 48px; height: 48px; background: Theme.purple; border-radius: 12px;
+                            VerticalBox { padding: 6px; Text { text: AppState.elements.length + ""; font-size: 16px; font-weight: 700; color: white; horizontal-alignment: center; } Text { text: AppState.lang == "ru" ? "в Studio" : "in Studio"; font-size: 8px; color: white; horizontal-alignment: center; } } }
+                    }
+                    TouchArea { clicked => { AppState.view = "studio"; }
+                        Rectangle { height: 30px; border-radius: 999px; background: Theme.purple; drop-shadow-blur: 14px; drop-shadow-color: Theme.purple-glow;
+                            Text { text: AppState.lang == "ru" ? "Открыть Studio →" : "Open Studio →"; font-size: 11px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; }
+                            animate background { duration: 160ms; }
+                        }
+                    }
                 }
             }
         }
-        HorizontalBox {
-            spacing: 14px;
-            Rectangle { background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 16px;
-                VerticalBox { padding: 16px; spacing: 6px; Text { text: "Study Mode"; font-size: 13px; font-weight: 700; color: Theme.text; } Text { text: "8 courses • quizzes • progress"; font-size: 11px; color: Theme.muted; } Rectangle { height: 6px; border-radius: 3px; background: #ffffff12; Rectangle { width: 34%; height: 100%; background: Theme.purple; border-radius: 3px; } } } }
-            Rectangle { background: Theme.surface; border-width: 1px; border-color: Theme.purple; border-radius: 16px;
-                VerticalBox { padding: 16px; spacing: 6px; Text { text: "AXIOM Studio — NEW"; font-size: 13px; font-weight: 700; color: Theme.purple2; } Text { text: "Build walls, rooms, beams. Drag, resize, assign materials."; font-size: 11px; color: Theme.muted; } Text { text: "Studio →"; font-size: 11px; font-weight: 700; color: Theme.purple2; } } }
+        // STUDY | STUDIO cards
+        HorizontalBox { spacing: 12px;
+            // STUDY card
+            Rectangle {
+                background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 16px;
+                TouchArea { clicked => { AppState.view = "study"; } }
+                VerticalBox { padding: 16px; spacing: 8px;
+                    HorizontalBox { spacing: 10px;
+                        Rectangle { width: 36px; height: 36px; border-radius: 10px; background: #ffffff08; border-width: 1px; border-color: Theme.border;
+                            Text { text: "◐"; font-size: 16px; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; } }
+                        VerticalBox { spacing: 2px;
+                            Text { text: AppState.lang == "ru" ? "STUDY MODE" : "STUDY MODE"; font-size: 9px; font-weight: 700; color: Theme.muted; letter-spacing: 1px; }
+                            Text { text: AppState.lang == "ru" ? "Изучай основы" : "Learn fundamentals"; font-size: 14px; font-weight: 700; color: Theme.text; }
+                        }
+                    }
+                    Text { text: AppState.lang == "ru" ? "Архитектура, конструкции, материалы и инженерия — 8 курсов, прогресс локально." : "Architecture, structures, materials & engineering — 8 courses, local progress."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+                    Rectangle { height: 6px; border-radius: 3px; background: #ffffff12; Rectangle { width: 34%; height: 100%; background: Theme.purple; border-radius: 3px; } }
+                    HorizontalBox { spacing: 6px; alignment: space-between;
+                        Text { text: AppState.lang == "ru" ? "Войти →" : "Enter →"; font-size: 11px; font-weight: 700; color: Theme.text; vertical-alignment: center; }
+                        Text { text: "8 courses"; font-size: 10px; color: Theme.muted2; vertical-alignment: center; }
+                    }
+                }
+                // hover lift
+                property <length> ty: 0px; y: ty; animate y { duration: 180ms; easing: ease-out; }
+                TouchArea { mouse-cursor: pointer; moved => { parent.ty = self.has-hover ? -2px : 0px; } }
+            }
+            // STUDIO card — primary
+            Rectangle {
+                background: #12131A; border-width: 1px; border-color: Theme.purple; border-radius: 16px; drop-shadow-blur: 18px; drop-shadow-color: #7C5CFC18;
+                TouchArea { clicked => { AppState.view = "studio"; } }
+                VerticalBox { padding: 16px; spacing: 8px;
+                    HorizontalBox { spacing: 10px;
+                        Rectangle { width: 36px; height: 36px; border-radius: 10px; background: Theme.purple; Text { text: "⬢"; font-size: 16px; color: white; horizontal-alignment: center; vertical-alignment: center; } }
+                        VerticalBox { spacing: 2px;
+                            Text { text: AppState.lang == "ru" ? "AXIOM STUDIO — ГЛАВНОЕ" : "AXIOM STUDIO — PRIMARY"; font-size: 9px; font-weight: 700; color: Theme.purple2; letter-spacing: 1px; }
+                            Text { text: AppState.lang == "ru" ? "Создавай и экспериментируй" : "Create & experiment"; font-size: 14px; font-weight: 700; color: Theme.text; }
+                        }
+                        Rectangle {}
+                        Rectangle { width: 46px; height: 22px; border-radius: 999px; background: Theme.purple;
+                            Text { text: "NEW"; font-size: 9px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; } }
+                    }
+                    Text { text: AppState.lang == "ru" ? "Стены, комнаты, колонны, балки. Перетаскивание, ресайз, материалы — локально." : "Walls, rooms, columns, beams. Drag, resize, materials — locally saved."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+                    Rectangle { height: 6px; border-radius: 3px; background: #7C5CFC22; Rectangle { width: 62%; height: 100%; background: Theme.purple; border-radius: 3px; } }
+                    HorizontalBox { spacing: 6px; alignment: space-between;
+                        Text { text: AppState.lang == "ru" ? "Открыть Studio →" : "Open Studio →"; font-size: 11px; font-weight: 700; color: Theme.purple2; vertical-alignment: center; }
+                        Text { text: AppState.project-name + " • " + AppState.elements.length; font-size: 10px; color: Theme.muted; vertical-alignment: center; }
+                    }
+                }
+                property <length> ty2: 0px; y: ty2; animate y { duration: 180ms; }
+                TouchArea { mouse-cursor: pointer; moved => { parent.ty2 = self.has-hover ? -2px : 0px; } }
+            }
+        }
+        // RECENT + QUICK
+        HorizontalBox { spacing: 12px;
+            VerticalBox { spacing: 8px;
+                Text { text: AppState.lang == "ru" ? "Недавний проект" : "Recent project"; font-size: 10px; font-weight: 700; color: Theme.muted; letter-spacing: 1px; }
+                Rectangle { height: 92px; background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 14px;
+                    TouchArea { clicked => { AppState.view = "studio"; } }
+                    HorizontalBox { padding: 14px; spacing: 12px;
+                        Rectangle { width: 72px; height: 62px; background: #0E0E14; border-width: 1px; border-color: Theme.border; border-radius: 10px;
+                            // mini canvas preview
+                            Rectangle { x: 10px; y: 12px; width: 44px; height: 28px; background: #A8A29E; border-radius: 3px; }
+                            Rectangle { x: 46px; y: 18px; width: 8px; height: 8px; background: Theme.purple; border-radius: 4px; }
+                        }
+                        VerticalBox { spacing: 4px;
+                            Text { text: AppState.project-name; font-size: 12px; font-weight: 700; color: Theme.text; }
+                            Text { text: AppState.elements.length + (AppState.lang == "ru" ? " элементов • сохранено локально" : " elements • saved locally"); font-size: 10px; color: Theme.muted; }
+                            HorizontalBox { spacing: 6px;
+                                Rectangle { width: 56px; height: 22px; border-radius: 999px; background: Theme.purple;
+                                    Text { text: AppState.lang == "ru" ? "Открыть" : "Open"; font-size: 10px; font-weight: 700; color: white; horizontal-alignment: center; vertical-alignment: center; } }
+                                Text { text: "900×600"; font-size: 10px; color: Theme.muted2; vertical-alignment: center; }
+                            }
+                        }
+                    }
+                }
+            }
+            VerticalBox { width: 260px; spacing: 8px;
+                Text { text: AppState.lang == "ru" ? "Быстрые действия" : "Quick actions"; font-size: 10px; font-weight: 700; color: Theme.muted; letter-spacing: 1px; }
+                VerticalBox { spacing: 6px;
+                    TouchArea { clicked => { AppState.request-new-project(); AppState.view = "studio"; }
+                        Rectangle { height: 30px; border-radius: 10px; background: #ffffff08; border-width: 1px; border-color: Theme.border;
+                            Text { text: AppState.lang == "ru" ? "+ Новый проект" : "+ New project"; font-size: 11px; font-weight: 600; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+                    TouchArea { clicked => { AppState.view = "study"; }
+                        Rectangle { height: 30px; border-radius: 10px; background: #ffffff08; border-width: 1px; border-color: Theme.border;
+                            Text { text: AppState.lang == "ru" ? "Продолжить обучение →" : "Continue Study →"; font-size: 11px; font-weight: 600; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+                    TouchArea { clicked => { AppState.view = "explore"; }
+                        Rectangle { height: 30px; border-radius: 10px; background: #ffffff08; border-width: 1px; border-color: Theme.border;
+                            Text { text: AppState.lang == "ru" ? "Исследовать темы →" : "Explore topics →"; font-size: 11px; font-weight: 600; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; } } }
+                }
+                Text { text: AppState.lang == "ru" ? "Подсказка: в Studio выбери инструмент и кликни по канвасу." : "Tip: pick a tool in Studio and click the canvas."; font-size: 10px; color: Theme.muted2; wrap: word-wrap; }
+            }
         }
     }
 }
 
 component StudyPage inherits Rectangle {
     background: transparent;
-    VerticalBox {
-        padding: 24px;
-        spacing: 12px;
-        Text { text: "Study Mode — structured learning"; font-size: 11px; color: Theme.purple2; }
-        Text { text: "From first principles to real buildings."; font-size: 18px; font-weight: 700; color: Theme.text; }
-        Text { text: "Courses preserved from legacy — rendered natively. Lessons open here (MVP shows list, full markdown next iteration)."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
-        // simple placeholder list
-        VerticalBox {
-            spacing: 8px;
+    property <bool> shown: false; opacity: shown ? 1 : 0; y: shown ? 0px : 8px; animate opacity, y { duration: 260ms; easing: ease-out; }
+    Timer { interval: 30ms; running: !root.shown; triggered => { root.shown = true; } }
+    VerticalBox { padding: 18px; spacing: 12px;
+        Text { text: AppState.lang == "ru" ? "STUDY MODE — структурированное обучение" : "STUDY MODE — structured learning"; font-size: 10px; color: Theme.purple2; letter-spacing: 1px; }
+        Text { text: AppState.lang == "ru" ? "От принципов до зданий." : "From first principles to real buildings."; font-size: 18px; font-weight: 700; color: Theme.text; }
+        Text { text: AppState.lang == "ru" ? "Курсы сохранены из legacy — нативный рендер." : "Courses from legacy — natively rendered."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+        VerticalBox { spacing: 8px;
             Rectangle { height: 64px; background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 14px;
-                HorizontalBox { padding: 12px; spacing: 10px; Rectangle { width: 36px; height: 36px; border-radius: 10px; background: Theme.purple; Text { text: "◐"; font-size: 14px; color: white; horizontal-alignment: center; vertical-alignment: center; } } VerticalBox { Text { text: "Fundamentals of Architecture"; font-size: 12px; font-weight: 600; color: Theme.text; } Text { text: "Beginner • 4 lessons"; font-size: 10px; color: Theme.muted; } } } }
+                HorizontalBox { padding: 12px; spacing: 10px; Rectangle { width: 36px; height: 36px; border-radius: 10px; background: Theme.purple; Text { text: "◐"; font-size: 14px; color: white; horizontal-alignment: center; vertical-alignment: center; } } VerticalBox { spacing: 2px; Text { text: AppState.lang == "ru" ? "Основы архитектуры" : "Fundamentals of Architecture"; font-size: 12px; font-weight: 600; color: Theme.text; } Text { text: "Beginner • 4 lessons"; font-size: 10px; color: Theme.muted; } } } }
             Rectangle { height: 64px; background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 14px;
-                HorizontalBox { padding: 12px; spacing: 10px; Rectangle { width: 36px; height: 36px; border-radius: 10px; background: Theme.purple; Text { text: "⬢"; font-size: 14px; color: white; horizontal-alignment: center; vertical-alignment: center; } } VerticalBox { Text { text: "Structures that Stand"; font-size: 12px; font-weight: 600; color: Theme.text; } Text { text: "Beginner • 4 lessons"; font-size: 10px; color: Theme.muted; } } } }
+                HorizontalBox { padding: 12px; spacing: 10px; Rectangle { width: 36px; height: 36px; border-radius: 10px; background: Theme.purple; Text { text: "⬢"; font-size: 14px; color: white; horizontal-alignment: center; vertical-alignment: center; } } VerticalBox { spacing: 2px; Text { text: AppState.lang == "ru" ? "Конструкции" : "Structures that Stand"; font-size: 12px; font-weight: 600; color: Theme.text; } Text { text: "Beginner • 4 lessons"; font-size: 10px; color: Theme.muted; } } } }
             Rectangle { height: 64px; background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 14px;
-                HorizontalBox { padding: 12px; spacing: 10px; Rectangle { width: 36px; height: 36px; border-radius: 10px; background: Theme.purple; Text { text: "▭"; font-size: 14px; color: white; horizontal-alignment: center; vertical-alignment: center; } } VerticalBox { Text { text: "Materials & Tectonics"; font-size: 12px; font-weight: 600; color: Theme.text; } Text { text: "Intermediate • 3 lessons"; font-size: 10px; color: Theme.muted; } } } }
+                HorizontalBox { padding: 12px; spacing: 10px; Rectangle { width: 36px; height: 36px; border-radius: 10px; background: Theme.purple; Text { text: "▭"; font-size: 14px; color: white; horizontal-alignment: center; vertical-alignment: center; } } VerticalBox { spacing: 2px; Text { text: AppState.lang == "ru" ? "Материалы" : "Materials & Tectonics"; font-size: 12px; font-weight: 600; color: Theme.text; } Text { text: "Intermediate • 3 lessons"; font-size: 10px; color: Theme.muted; } } } }
         }
     }
 }
 
 component ExplorePage inherits Rectangle {
     background: transparent;
-    VerticalBox {
-        padding: 24px;
-        spacing: 10px;
-        Text { text: "Explore — free browsing of topics"; font-size: 18px; font-weight: 700; color: Theme.text; }
-        Text { text: "Legacy topics (Gothic, Brutalism, Trusses, Concrete...) — native list, detail view coming next."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
-        for t in [{title:"Gothic — Light as Structure"}, {title:"Brutalism — Truth of Material"}, {title:"Trusses — Triangles that Span"}, {title:"Concrete — Liquid Stone"}] : Rectangle {
+    property <bool> shown: false; opacity: shown ? 1 : 0; y: shown ? 0px : 8px; animate opacity, y { duration: 240ms; }
+    Timer { interval: 30ms; running: !root.shown; triggered => { root.shown = true; } }
+    VerticalBox { padding: 18px; spacing: 10px;
+        Text { text: AppState.lang == "ru" ? "Исследование — свободный просмотр" : "Explore — free browsing"; font-size: 18px; font-weight: 700; color: Theme.text; }
+        Text { text: AppState.lang == "ru" ? "Топики: готика, брутализм, фермы, бетон..." : "Topics: Gothic, Brutalism, Trusses, Concrete..."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+        for t in [{title: AppState.lang == "ru" ? "Готика — свет" : "Gothic — Light"}, {title: AppState.lang == "ru" ? "Брутализм — материал" : "Brutalism — Truth"}, {title: "Trusses — Triangles"}, {title: "Concrete — Liquid Stone"}] : Rectangle {
             height: 44px; background: Theme.surface; border-width: 1px; border-color: Theme.border; border-radius: 12px;
             HorizontalBox { padding: 10px; Text { text: t.title; font-size: 11px; color: Theme.text; vertical-alignment: center; } }
         }
@@ -463,22 +477,14 @@ component ExplorePage inherits Rectangle {
 
 export component App inherits Window {
     title: "AXIOM";
-    preferred-width: 1280px;
-    preferred-height: 800px;
-    min-width: 1120px;
-    min-height: 700px;
+    preferred-width: 1280px; preferred-height: 800px; min-width: 1120px; min-height: 700px;
     background: Theme.bg;
-    // no-frame handled in Rust via WindowAttributes if needed; Slint default is decorated — we keep decorated for now, custom titlebar is visual
-    VerticalBox {
-        padding: 0;
-        spacing: 0;
+    VerticalBox { padding: 0; spacing: 0;
         Titlebar {}
-        HorizontalBox {
-            padding: 0;
-            spacing: 0;
+        HorizontalBox { padding: 0; spacing: 0;
             Sidebar {}
-            Rectangle {
-                background: transparent;
+            Rectangle { background: transparent; clip: true;
+                // page container with fade
                 if (AppState.view == "home"): HomePage {}
                 if (AppState.view == "study"): StudyPage {}
                 if (AppState.view == "explore"): ExplorePage {}
