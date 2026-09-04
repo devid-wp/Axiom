@@ -156,7 +156,7 @@ export const courses: Course[] = [
     title: { en: 'Fundamentals of Architecture', ru: 'Основы архитектуры' },
     desc: { en: 'Space, order, light and human scale. How architects think before they draw.', ru: 'Пространство, порядок, свет и масштаб человека. Как мыслят архитекторы до чертежа.' },
     level: 'Beginner • 4 lessons',
-    accent: '#E6FF52',
+    accent: '#7C5CFC',
     lessonsCount: 4,
     image: '◐',
     lessons: [
@@ -207,7 +207,7 @@ export const courses: Course[] = [
     title: { en: 'Structures that Stand', ru: 'Конструкции, которые стоят' },
     desc: { en: 'Beams, arches, trusses and frames — how forces flow to the ground.', ru: 'Балки, арки, фермы и рамы — как силы стекают на землю.' },
     level: 'Beginner • 4 lessons',
-    accent: '#8B8FF0',
+    accent: '#9D7CFF',
     lessonsCount: 4,
     image: '⬢',
     lessons: [
@@ -258,7 +258,7 @@ export const courses: Course[] = [
     title: { en: 'Materials & Tectonics', ru: 'Материалы и тектоника' },
     desc: { en: 'Concrete, steel, timber, masonry — what each wants to be.', ru: 'Бетон, сталь, дерево, камень — кем хочет быть каждый материал.' },
     level: 'Intermediate • 3 lessons',
-    accent: '#FF8A5B',
+    accent: '#B794FF',
     lessonsCount: 3,
     image: '▭',
     lessons: [
@@ -299,7 +299,7 @@ export const courses: Course[] = [
     title: { en: 'Styles Through Time', ru: 'Стили сквозь время' },
     desc: { en: 'From Doric to Deconstructivism — reading a facade like a text.', ru: 'От дорики до деконструктивизма — читаем фасад как текст.' },
     level: 'Beginner • 3 lessons',
-    accent: '#4ADE80',
+    accent: '#7C5CFC',
     lessonsCount: 3,
     image: '⬣',
     lessons: [
