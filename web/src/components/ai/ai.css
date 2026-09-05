@@ -1,0 +1,315 @@
+/* AXIOM — AI tutor panel. Native to the app: no white cards, no chat bubbles,
+   same hairline/purple language as the rest of the chrome. */
+
+.ai {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--panel);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+
+.ai--study {
+  border: none;
+  border-radius: 0;
+}
+
+.ai__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+
+.ai__title {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: var(--tx2);
+}
+
+.ai__mode {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-micro);
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+
+.ai__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+}
+.ai__dot--live {
+  background: var(--ok);
+  box-shadow: 0 0 6px rgba(63, 182, 139, 0.5);
+}
+.ai__dot--off {
+  background: var(--tx3);
+}
+
+.ai__spacer {
+  flex: 1;
+}
+
+.ai__clear {
+  font-size: var(--fs-micro);
+  color: var(--tx3);
+  transition: color var(--t-fast);
+}
+.ai__clear:hover {
+  color: var(--tx2);
+}
+
+.ai__close {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--tx3);
+  font-size: 13px;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.ai__close:hover {
+  background: var(--h-strong);
+  color: var(--tx);
+}
+
+/* exercise/challenge context carried from Study */
+.ai__exercise {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--accent-line);
+  background: var(--accent-wash);
+  flex-shrink: 0;
+}
+.ai__exercise-label {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: var(--accent-tx);
+}
+.ai__exercise-title {
+  font-size: var(--fs-ctl);
+  font-weight: 600;
+  color: var(--tx);
+}
+.ai__exercise-info {
+  font-size: var(--fs-meta);
+  color: var(--tx2);
+}
+.ai__exercise-x {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--tx3);
+  font-size: 13px;
+}
+.ai__exercise-x:hover {
+  background: var(--h-strong);
+  color: var(--tx);
+}
+
+/* quick suggestions */
+.ai__suggest {
+  padding: 6px 8px 4px;
+  border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+.ai__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.ai__chip {
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: var(--fs-micro);
+  color: var(--tx2);
+  transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
+}
+.ai__chip:hover {
+  border-color: var(--accent-line);
+  color: var(--accent-tx);
+  background: var(--accent-wash);
+}
+
+/* messages */
+.ai__msgs {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai__empty {
+  font-size: var(--fs-meta);
+  color: var(--tx3);
+  padding: 6px 4px;
+  line-height: 1.5;
+}
+
+.ai__msg {
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-ctl);
+  line-height: 1.5;
+  max-width: 96%;
+}
+.ai__msg p {
+  margin: 0;
+}
+.ai__msg p + p {
+  margin-top: 4px;
+}
+.ai__msg--user {
+  align-self: flex-end;
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-line);
+  color: var(--tx);
+}
+.ai__msg--assistant {
+  align-self: flex-start;
+  background: var(--raised);
+  border: 1px solid var(--line-soft);
+  color: var(--tx2);
+}
+
+.ai__practice {
+  margin-top: 8px;
+  padding: 3px 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-ctl);
+  font-weight: 600;
+  color: var(--accent-tx);
+  transition: background var(--t-fast);
+}
+.ai__practice:hover {
+  background: var(--accent-wash);
+}
+
+.ai__thinking {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-meta);
+  color: var(--tx3);
+  padding: 4px 4px;
+}
+.ai__dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.ai__dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: ai-blink 1s var(--ease-inout) infinite;
+}
+.ai__dots i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.ai__dots i:nth-child(3) {
+  animation-delay: 0.36s;
+}
+@keyframes ai-blink {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+.ai__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+.ai__retry {
+  padding: 2px 8px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-micro);
+  color: var(--danger);
+  transition: background var(--t-fast);
+}
+.ai__retry:hover {
+  background: var(--danger-wash);
+}
+
+/* input */
+.ai__form {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+.ai__input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-ctl);
+  color: var(--tx);
+  outline: none;
+  transition: border-color var(--t-fast);
+}
+.ai__input:focus {
+  border-color: var(--accent-line);
+}
+.ai__input::placeholder {
+  color: var(--tx3);
+}
+.ai__send {
+  flex-shrink: 0;
+  padding: 0 10px;
+  height: 24px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-ctl);
+  font-weight: 600;
+  color: var(--accent-tx);
+  transition: background var(--t-fast), opacity var(--t-fast);
+}
+.ai__send:hover:not(:disabled) {
+  background: var(--accent-wash);
+}
+.ai__send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

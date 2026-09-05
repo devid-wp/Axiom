@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUi } from "@/store/ui";
 import { useStudio } from "@/store/studio";
+import { useTutor } from "@/ai/service";
 import { STR } from "@/i18n";
+import { AiChat } from "@/components/ai/AiChat";
 import { Caption } from "@/components/Caption";
 import { ToolButton } from "@/components/ToolButton";
 import { TreeRow } from "@/components/TreeRow";
@@ -246,6 +248,20 @@ function Canvas() {
   );
 }
 
+/** Compact challenge strip shown just above the tutor drawer. */
+function ExerciseStrip({ onOpen }: { onOpen: () => void }) {
+  const s = STR[useUi.getState().lang];
+  const exercise = useTutor((st) => st.exercise);
+  if (!exercise) return null;
+  return (
+    <div className="studio-exercise" onClick={onOpen}>
+      <span className="studio-exercise__label mono">{s.aiChallenge}</span>
+      <span className="studio-exercise__title">{exercise.title}</span>
+      <span className="studio-exercise__arrow mono">{"\u2197"}</span>
+    </div>
+  );
+}
+
 export function StudioPage() {
   const lang = useUi((s) => s.lang);
   const s = STR[lang];
@@ -258,6 +274,9 @@ export function StudioPage() {
 
   const elements = project?.elements ?? [];
   const sel = elements.find((e) => e.id === selectedId);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiTab, setAiTab] = useState<"chat" | "challenge">("chat");
+  const exercise = useTutor((st) => st.exercise);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -403,9 +422,30 @@ export function StudioPage() {
           </span>
         </div>
         <Canvas />
+        <ExerciseStrip onOpen={() => setAiOpen(true)} />
+        {aiOpen && (
+          <div className="studio-ai-drawer">
+            <AiChat scope="studio" onClose={() => setAiOpen(false)} />
+          </div>
+        )}
       </section>
 
-      <aside className="studio-inspector">
+      <aside className={`studio-inspector ${aiOpen ? "studio-inspector--ai" : ""}`}>
+        <div className={`inspector-ai-toggle ${exercise ? "inspector-ai-toggle--active" : ""}`}>
+          <span className="inspector-ai-toggle__label mono">
+            {exercise ? `${s.aiChallenge} · ${exercise.title}` : s.aiStudio}
+          </span>
+          <button
+            className="inspector-ai-toggle__btn"
+            onClick={() => {
+              const next = !aiOpen;
+              setAiOpen(next);
+              if (next) setAiTab("chat");
+            }}
+          >
+            {aiOpen ? "×" : "AI"}
+          </button>
+        </div>
         <Inspector />
       </aside>
     </div>

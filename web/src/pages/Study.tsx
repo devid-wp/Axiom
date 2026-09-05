@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useUi } from "@/store/ui";
 import { useStudy, lessonKey } from "@/store/study";
 import { STR } from "@/i18n";
@@ -7,6 +8,8 @@ import { TreeHead } from "@/components/TreeHead";
 import { LessonRow } from "@/components/LessonRow";
 import { QuizOpt } from "@/components/QuizOpt";
 import { Button } from "@/components/Button";
+import { SegTab } from "@/components/SegTab";
+import { AiChat } from "@/components/ai/AiChat";
 import "./Study.css";
 
 function Reader() {
@@ -75,6 +78,7 @@ function Reader() {
 }
 
 export function StudyPage() {
+  const [railTab, setRailTab] = useState<"progress" | "ai">("progress");
   const lang = useUi((s) => s.lang);
   const s = STR[lang];
   const courseIdx = useStudy((st) => st.course);
@@ -130,44 +134,52 @@ export function StudyPage() {
         <Reader />
       </div>
 
-      <aside className="study-rail">
-        <div className="study-rail__inner">
-          <Caption text={s.progress} />
-          <div className="study-rail__pct">{pct}%</div>
-          <div className="study-rail__bar">
-            <div className="study-rail__bar-fill" style={{ width: `${pct}%` }} />
-          </div>
-          <div className="study-rail__meta mono">
-            {done} of {totalLessons()} · {s.local}
-          </div>
-          <div className="study-rail__gap" />
-          <Caption text={s.tracks} />
-          {courses.map((c, ci) => {
-            const trackDone = c.lessons.filter((l) => completed[lessonKey(c.id, l.id)]).length;
-            const all = trackDone === c.lessons.length;
-            const any = trackDone > 0;
-            const sym = all ? "✓" : any ? "◐" : "○";
-            const label = `${sym} ${c.title[lang].split(" — ")[0].split(" (")[0]}`;
-            const count = all || !any ? "" : ` ${trackDone}/${c.lessons.length}`;
-            void ci;
-            return (
-              <div
-                key={c.id}
-                className={`study-rail__track ${all ? "study-rail__track--done" : any ? "" : "study-rail__track--idle"}`}
-              >
-                {label}
-                <span className="study-rail__track-count mono">{count}</span>
+      <aside className={`study-rail ${railTab === "ai" ? "study-rail--ai" : ""}`}>
+        <div className="study-rail__tabs">
+          <SegTab text={s.progressTab} active={railTab === "progress"} onClick={() => setRailTab("progress")} />
+          <SegTab text={s.aiTab} active={railTab === "ai"} onClick={() => setRailTab("ai")} />
+        </div>
+        <div className="study-rail__body">
+          {railTab === "ai" ? (
+            <AiChat scope="study" />
+          ) : (
+            <div className="study-rail__progress">
+              <Caption text={s.progress} />
+              <div className="study-rail__pct">{pct}%</div>
+              <div className="study-rail__bar">
+                <div className="study-rail__bar-fill" style={{ width: `${pct}%` }} />
               </div>
-            );
-          })}
-          <div className="study-rail__gap" />
-          <Caption text={s.actions} />
-          <div className="study-rail__action">
-            <Button kind="primary" onClick={() => useUi.getState().setView("studio")}>
-              {s.practiceInStudio}
-            </Button>
-          </div>
-          <div className="study-rail__fill" />
+              <div className="study-rail__meta mono">
+                {done} of {totalLessons()} · {s.local}
+              </div>
+              <div className="study-rail__gap" />
+              <Caption text={s.tracks} />
+              {courses.map((c) => {
+                const trackDone = c.lessons.filter((l) => completed[lessonKey(c.id, l.id)]).length;
+                const all = trackDone === c.lessons.length;
+                const any = trackDone > 0;
+                const sym = all ? "✓" : any ? "◐" : "○";
+                const label = `${sym} ${c.title[lang].split(" — ")[0].split(" (")[0]}`;
+                const count = all || !any ? "" : ` ${trackDone}/${c.lessons.length}`;
+                return (
+                  <div
+                    key={c.id}
+                    className={`study-rail__track ${all ? "study-rail__track--done" : any ? "" : "study-rail__track--idle"}`}
+                  >
+                    {label}
+                    <span className="study-rail__track-count mono">{count}</span>
+                  </div>
+                );
+              })}
+              <div className="study-rail__gap" />
+              <Caption text={s.actions} />
+              <div className="study-rail__action">
+                <Button kind="primary" onClick={() => useUi.getState().setView("studio")}>
+                  {s.practiceInStudio}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </aside>
     </div>
