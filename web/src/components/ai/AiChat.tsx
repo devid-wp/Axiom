@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useUi } from "@/store/ui";
 import { useStudio } from "@/store/studio";
-import { useTutor, practiceAction } from "@/ai/service";
+import { useTutor, startExerciseFromMessage } from "@/ai/service";
 import { studySuggestions, studioSuggestions, type Suggestion } from "@/ai/suggestions";
 import { buildStudioContext, buildStudyContext } from "@/ai/prompts";
 import { STR } from "@/i18n";
@@ -38,6 +38,8 @@ export function AiChat({ scope, onClose }: AiChatProps) {
   const ask = useTutor((st) => st.ask);
   const retry = useTutor((st) => st.retry);
   const clear = useTutor((st) => st.clear);
+  const confirmPending = useTutor((st) => st.confirmPending);
+  const cancelPending = useTutor((st) => st.cancelPending);
   const clearExercise = useTutor((st) => st.clearExercise);
 
   const ctx = useScopeCtx(scope);
@@ -55,6 +57,8 @@ export function AiChat({ scope, onClose }: AiChatProps) {
     setInput("");
     void ask(scope, q);
   };
+
+  const undo = () => useStudio.getState().undo();
 
   return (
     <div className={`ai ai--${scope}`}>
@@ -77,7 +81,7 @@ export function AiChat({ scope, onClose }: AiChatProps) {
         )}
       </div>
 
-      {scope === "studio" && exercise && (
+      {exercise && (
         <div className="ai__exercise">
           <div className="ai__exercise-label">{s.aiChallenge}</div>
           <div className="ai__exercise-title">{exercise.title}</div>
@@ -91,7 +95,7 @@ export function AiChat({ scope, onClose }: AiChatProps) {
       <div className="ai__suggest">
         <Caption text={s.aiSuggs} />
         <div className="ai__chips">
-          {suggestions.map((sg, i) => (
+          {suggestions.slice(0, 5).map((sg, i) => (
             <button key={i} className="ai__chip mono" onClick={() => submit(sg.question)}>
               {sg.label}
             </button>
@@ -108,13 +112,63 @@ export function AiChat({ scope, onClose }: AiChatProps) {
             {m.content.split("\n").map((line, j) => (
               <p key={j}>{line || "\u00A0"}</p>
             ))}
-            {m.actions?.map((a, j) => (
-              <button key={j} className="ai__practice" onClick={() => practiceAction(scope)}>
-                {s.aiPractice}
-              </button>
-            ))}
+
+            {m.exercise && (
+              <div className="ai__offer">
+                <div className="ai__offer-title">{m.exercise.title}</div>
+                {m.exercise.objective && (
+                  <div className="ai__offer-line">
+                    <span className="ai__offer-label">{s.aiObjective}</span>
+                    {m.exercise.objective}
+                  </div>
+                )}
+                <div className="ai__offer-line">
+                  <span className="ai__offer-label">{s.aiTask}</span>
+                  {m.exercise.task}
+                </div>
+                {m.exercise.hint && (
+                  <div className="ai__offer-line">
+                    <span className="ai__offer-label">{s.aiHint}</span>
+                    {m.exercise.hint}
+                  </div>
+                )}
+                <button className="ai__practice" onClick={() => startExerciseFromMessage(scope, m.exercise!)}>
+                  {s.aiPractice}
+                </button>
+              </div>
+            )}
+
+            {m.actions && m.actions.length > 0 && (
+              <div className="ai__effects">
+                <span className="ai__effects-line">
+                  {"\u2713"} {m.actions.map((a) => a.summary).join(" · ")}
+                </span>
+                {m.actions.some((a) => a.undoable) && (
+                  <button className="ai__effects-undo mono" onClick={undo}>
+                    {s.aiUndo}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ))}
+
+        {session.pending && (
+          <div className="ai__confirm">
+            <div className="ai__confirm-note">
+              {s.aiAskConfirm} {s.aiDangerNote}
+            </div>
+            <div className="ai__confirm-actions">
+              <button className="ai__confirm-apply" onClick={() => void confirmPending(scope)}>
+                {s.aiApply}
+              </button>
+              <button className="ai__confirm-cancel" onClick={() => cancelPending(scope)}>
+                {s.aiCancel}
+              </button>
+            </div>
+          </div>
+        )}
+
         {thinking && (
           <div className="ai__thinking">
             <span className="ai__dots">

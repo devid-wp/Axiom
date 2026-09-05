@@ -57,6 +57,32 @@ async function viewAi(browser, name, width, height, opts = {}) {
   return { name, errors };
 }
 
+/* Studio AI drawer after structured actions: objects built + effect/toast. */
+async function viewAiAction(browser, name, width, height, prompt, minEls = 3) {
+  const page = await browser.newPage({ viewport: { width, height } });
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+  page.on("console", (m) => {
+    if (m.type() === "error") errors.push(`console: ${m.text()}`);
+  });
+  await page.goto(URL, { waitUntil: "networkidle" });
+  await page.waitForSelector(".shell");
+  await page.click('[title="Studio"]');
+  await page.waitForTimeout(250);
+  await page.click(".inspector-ai-toggle__btn");
+  await page.waitForSelector(".studio-ai-drawer .ai");
+  await page.fill(".studio-ai-drawer .ai__input", prompt);
+  await page.click(".studio-ai-drawer .ai__send");
+  await page.waitForSelector(".studio-ai-drawer .ai__msg--assistant", { timeout: 10000 });
+  if (minEls > 0) {
+    await page.waitForFunction((m) => document.querySelectorAll(".el").length >= m, minEls, { timeout: 10000 });
+  }
+  await page.waitForTimeout(350);
+  await page.screenshot({ path: `${SHOTS}/${name}.png` });
+  await page.close();
+  return { name, errors };
+}
+
 (async () => {
   const browser = await firefox.launch();
   const seed = await browser.newPage({ viewport: { width: 1366, height: 768 } });
@@ -80,6 +106,8 @@ async function viewAi(browser, name, width, height, opts = {}) {
     results.push(await viewAi(browser, `07-study-ai-reply-${res}`, width, height, { chat: true }));
     results.push(await viewAi(browser, `08-studio-ai-${res}`, width, height, { studio: true }));
     results.push(await viewAi(browser, `09-studio-ai-reply-${res}`, width, height, { studio: true, chat: true }));
+    results.push(await viewAiAction(browser, `10-studio-ai-build-${res}`, width, height, "Create two columns and a beam between them."));
+    results.push(await viewAiAction(browser, `11-studio-ai-exercise-${res}`, width, height, "Give me a small exercise.", 0));
   }
   await browser.close();
 

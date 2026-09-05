@@ -69,6 +69,8 @@ interface StudioState {
   applyMaterial: (id: string, m: Material) => void;
   remove: (id: string) => void;
   duplicate: (id: string) => void;
+  /** Commit a whole new element list as ONE history entry (used by AI batches). */
+  commitElements: (elements: StudioElement[], label?: string) => void;
   undo: () => void;
   redo: () => void;
   save: () => void;
@@ -323,6 +325,25 @@ export const useStudio = create<StudioState>()((set, get) => ({
     });
     saveProjects(get().projects);
     set({ savedLabel: `Saved ${nowHm()}` });
+  },
+
+  commitElements: (elements, label) => {
+    const idx = get().currentIdx;
+    const proj = get().projects[idx];
+    if (!proj) return;
+    const cur = proj.elements;
+    if (elementsEqual(cur, elements)) return;
+    pushHistory(get, set);
+    const sel = get().selectedId;
+    const nextSel = elements.some((e) => e.id === sel) ? sel : "";
+    set({
+      projects: get().projects.map((p, i) => (i === idx ? { ...p, elements } : p)),
+      selectedId: nextSel,
+      undoEnabled: get()._hist.length > 0,
+      redoEnabled: false,
+    });
+    saveProjects(get().projects);
+    set({ savedLabel: label ?? `Saved ${nowHm()}` });
   },
 
   undo: () => {

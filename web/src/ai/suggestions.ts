@@ -68,16 +68,18 @@ const ROOM: Record<Lang, Suggestion[]> = {
 
 const STAGE: Record<Lang, Suggestion[]> = {
   en: [
-    { label: "What should I build?", question: "What should I build in Studio?" },
-    { label: "Beginner challenge", question: "Give me a beginner architecture challenge." },
+    { label: "Create two columns + beam", question: "Create two columns and a beam between them." },
+    { label: "Create a small pavilion", question: "Create a small pavilion." },
+    { label: "Check my work", question: "Check my work." },
+    { label: "What should I do next?", question: "What should I do next?" },
     { label: "Is this a good layout?", question: "Is this a good layout so far?" },
-    { label: "Explain what I made", question: "Explain what I just created." },
   ],
   ru: [
-    { label: "Что мне построить?", question: "Что мне построить в Studio?" },
-    { label: "Простое задание", question: "Дай мне простое задание по архитектуре." },
+    { label: "Две колонны + балка", question: "Создай две колонны и балку между ними." },
+    { label: "Построй павильон", question: "Создай небольшой павильон." },
+    { label: "Проверь мою работу", question: "Проверь мою работу." },
+    { label: "Что делать дальше?", question: "Что мне делать дальше?" },
     { label: "Хорошая ли планировка?", question: "Хорошая ли это планировка?" },
-    { label: "Что я создал?", question: "Объясни, что я только что создал." },
   ],
 };
 
@@ -85,7 +87,13 @@ export function studySuggestions(lang: Lang): Suggestion[] {
   return [
     { label: S.explain[lang], question: S.explain[lang] },
     { label: S.example[lang], question: S.example[lang] },
+    ...(lang === "en"
+      ? [{ label: "Explain columns simply", question: "Explain columns simply." }]
+      : [{ label: "Подробно о колоннах", question: "Объясни колонны простыми словами." }]),
     { label: S.quiz[lang], question: S.quiz[lang] },
+    ...(lang === "en"
+      ? [{ label: "Give me an exercise", question: "Give me a small exercise." }]
+      : [{ label: "Дай мне задание", question: "Дай мне небольшое задание." }]),
     { label: S.practice[lang], question: S.practice[lang] },
   ];
 }

@@ -116,6 +116,75 @@
   }
 }
 
+/* brief highlight around objects an AI action just touched */
+.el__flash {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  animation: el-flash 1.5s var(--ease-out) forwards;
+}
+@keyframes el-flash {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* "AI changed the canvas" toast */
+.action-toast {
+  position: absolute;
+  left: 50%;
+  top: 44px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  background: rgba(18, 18, 24, 0.92);
+  color: var(--accent-tx);
+  font-size: var(--fs-ctl);
+  z-index: var(--z-popover);
+  animation: toast-in var(--t-page) var(--ease-out);
+  pointer-events: auto;
+}
+.action-toast__body {
+  font-weight: 600;
+}
+.action-toast__undo {
+  padding: 1px 8px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--accent-tx);
+  transition: background var(--t-fast);
+}
+.action-toast__undo:hover {
+  background: var(--accent-wash);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 /* challenge strip above the drawer */
 .studio-exercise {
   display: flex;

@@ -76,6 +76,7 @@ function Canvas() {
   const tool = useStudio((s) => s.tool);
   const selectedId = useStudio((s) => s.selectedId);
   const elements = useStudio((s) => s.projects[s.currentIdx]?.elements ?? []);
+  const flash = useTutor((s) => s.lastAction);
 
   const zoneRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<SVGSVGElement>(null);
@@ -242,6 +243,21 @@ function Canvas() {
               )}
             </g>
           ))}
+
+          {(flash?.ids.length ?? 0) > 0 &&
+            elements
+              .filter((el) => flash!.ids.includes(el.id))
+              .map((el) => (
+                <rect
+                  key={`f${flash!.stamp}-${el.id}`}
+                  className="el__flash"
+                  x={el.x - 3}
+                  y={el.y - 3}
+                  width={el.w + 6}
+                  height={el.h + 6}
+                  rx={2}
+                />
+              ))}
         </svg>
       </div>
     </div>
@@ -258,6 +274,23 @@ function ExerciseStrip({ onOpen }: { onOpen: () => void }) {
       <span className="studio-exercise__label mono">{s.aiChallenge}</span>
       <span className="studio-exercise__title">{exercise.title}</span>
       <span className="studio-exercise__arrow mono">{"\u2197"}</span>
+    </div>
+  );
+}
+
+/** Brief "AI changed the canvas" toast with an Undo affordance. */
+function ActionToast() {
+  const s = STR[useUi((st) => st.lang)];
+  const flash = useTutor((st) => st.lastAction);
+  if (!flash) return null;
+  return (
+    <div className="action-toast">
+      <span className="action-toast__body">
+        {"\u2713"} {flash.summary} — {s.aiDone}
+      </span>
+      <button className="action-toast__undo mono" onClick={() => useStudio.getState().undo()}>
+        {s.aiUndo}
+      </button>
     </div>
   );
 }
@@ -422,6 +455,7 @@ export function StudioPage() {
           </span>
         </div>
         <Canvas />
+        <ActionToast />
         <ExerciseStrip onOpen={() => setAiOpen(true)} />
         {aiOpen && (
           <div className="studio-ai-drawer">

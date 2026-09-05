@@ -6,7 +6,22 @@ import { courses } from "@/data/content";
 import { useStudy, lessonKey } from "@/store/study";
 import { useStudio } from "@/store/studio";
 import { useUi } from "@/store/ui";
-import { elementName, MATERIAL_LABELS } from "@/studio/domain";
+import { elementName } from "@/studio/domain";
+
+const ACTIONS_INSTRUCTION =
+  "If the student asks you to BUILD, CHANGE or CREATE something in Studio, " +
+  "finish your reply with exactly one block:\n" +
+  "<axiom-actions>[{\"kind\":\"create_element\",\"elementType\":\"column\",\"x\":120,\"y\":180}, ...]</axiom-actions>\n" +
+  "Allowed kinds ONLY: create_element, move_element, resize_element, set_material, " +
+  "duplicate_element, select_element, clear_selection, delete_element, clear_project.\n" +
+  "Rules:\n" +
+  "- elementType in [wall, room, column, beam]; material in [concrete, brick, glass, timber, steel].\n" +
+  "- Coordinates in px, sheet is 900x600, snap to multiples of 8. You may omit coordinates to auto-place.\n" +
+  "- target may be omitted (=selected, else most recent), or use {\"kind\":...}/{\"last\":true}/{\"selected\":true}.\n" +
+  "- Never attempt ids you cannot know. Delete/clear_project require the student's confirmation in the app.\n" +
+  "- Max 12 actions per block. Never output anything outside the allowed schema.\n" +
+  "If you offer an exercise, finish the reply with:" +
+  "<axiom-exercise>{\"title\":\"...\",\"objective\":\"...\",\"task\":\"...\",\"hint\":\"...\"}</axiom-exercise>";
 
 const STUDY_SYSTEM =
   "You are the AXIOM Tutor — an architecture teaching assistant living inside the AXIOM design app.\n" +
@@ -15,17 +30,20 @@ const STUDY_SYSTEM =
   "ask one follow-up question when useful, and let the student reason before dumping an answer.\n" +
   "Answer in the student's language (given in CONTEXT).\n" +
   "The student is currently reading a lesson. Help them understand it.\n" +
-  "When it helps, suggest a small practice exercise and end the reply with: PRACTICE: <title> | <instructions>\n" +
-  "Keep replies under ~120 words.";
+  "Keep replies under ~120 words.\n" +
+  ACTIONS_INSTRUCTION;
 
 const STUDIO_SYSTEM =
   "You are the AXIOM Tutor — an architecture teaching assistant living inside the AXIOM Studio.\n" +
-  "You teach and give feedback on the student's design: comment on their layout, explain structure, " +
+  "You teach and give feedback on the student's design: comment on their actual layout, explain structure, " +
   "and propose small beginner exercises they can build right now in the open sheet.\n" +
   "Answer in the student's language (given in CONTEXT).\n" +
-  "Use the selected object and element counts in CONTEXT. Do not invent objects that do not exist.\n" +
-  "When you propose an exercise, end the reply with: PRACTICE: <title> | <instructions>\n" +
-  "Keep replies under ~120 words.";
+  "Use the real elements in CONTEXT.elements / CONTEXT.selected. Do not invent objects that do not exist.\n" +
+  "When the student asks you to build something, translate it into <axiom-actions> and then briefly " +
+  "explain what you did. When they ask to 'check my work', give simple educational feedback (this is " +
+  "not engineering validation): whether requested objects exist, their relationships, and one next step.\n" +
+  "Keep replies under ~120 words.\n" +
+  ACTIONS_INSTRUCTION;
 
 export function buildSystemPrompt(ctx: TutorContext): string {
   const head = ctx.scope === "study" ? STUDY_SYSTEM : STUDIO_SYSTEM;
@@ -61,8 +79,11 @@ export function buildStudyContext(): TutorContext {
     lessonCompleted: !!completed[lessonKey(c.id, l.id)],
     done,
     total,
+    exercise: null,
   };
 }
+
+const MAX_CTX_ELEMENTS = 60;
 
 export function buildStudioContext(exercise: AiExercise | null): TutorContext {
   const lang = useUi.getState().lang;
@@ -82,7 +103,7 @@ export function buildStudioContext(exercise: AiExercise | null): TutorContext {
         y: Math.round(sel.y),
         w: Math.round(sel.w),
         h: Math.round(sel.h),
-        material: MATERIAL_LABELS[sel.material],
+        material: sel.material,
       }
     : null;
 
@@ -94,5 +115,13 @@ export function buildStudioContext(exercise: AiExercise | null): TutorContext {
     counts,
     selected,
     exercise: exercise ?? null,
+    elements: elements.slice(-MAX_CTX_ELEMENTS).map((e) => ({
+      type: e.kind,
+      x: Math.round(e.x),
+      y: Math.round(e.y),
+      width: Math.round(e.w),
+      height: Math.round(e.h),
+      material: e.material,
+    })),
   };
 }

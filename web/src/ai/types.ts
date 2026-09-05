@@ -2,8 +2,11 @@
    talks to TutorProvider; which provider handles a request is decided upstream. */
 
 import type { Lang } from "@/store/ui";
+import type { ElementKind, Material } from "@/studio/types";
 
 export type AiScope = "study" | "studio";
+
+/* ------------------------------------------------------------------ UI ---- */
 
 export interface AiExercise {
   id: string;
@@ -12,18 +15,120 @@ export interface AiExercise {
   instructions: string;
 }
 
-export interface TutorAction {
-  type: "practice";
-  lang: Lang;
+/** Structured exercise the tutor can offer (TITLE / OBJECTIVE / TASK / HINT). */
+export interface AiExercisePayload {
   title: string;
-  instructions: string;
+  objective: string;
+  task: string;
+  hint?: string;
+}
+
+/** One executed AXIOM action batch, shown as a chip on an assistant message. */
+export interface UiActionInfo {
+  summary: string;
+  undoable: boolean;
 }
 
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
-  actions?: TutorAction[];
+  actions?: UiActionInfo[];
+  exercise?: AiExercisePayload;
+  pending?: boolean;
 }
+
+/* --------------------------------------------------------- action layer --- */
+/* The only way the model can affect Studio. The executor (ai/actions.ts)
+   validates these and applies them through the existing store/history. */
+
+export type AiActionKind =
+  | "create_element"
+  | "delete_element"
+  | "move_element"
+  | "resize_element"
+  | "set_material"
+  | "duplicate_element"
+  | "select_element"
+  | "clear_selection"
+  | "clear_project";
+
+/** How an action finds its target element without knowing opaque ids. */
+export interface AiTarget {
+  /** matches the element with this id (rarely available to the model) */
+  id?: string;
+  /** the most recently added element of this kind */
+  kind?: ElementKind;
+  /** the most recently added element overall */
+  last?: boolean;
+  /** the currently selected element */
+  selected?: boolean;
+}
+
+export interface AiCreateElement {
+  kind: "create_element";
+  elementType: ElementKind;
+  material?: Material;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+}
+export interface AiDeleteElement {
+  kind: "delete_element";
+  target?: AiTarget;
+}
+export interface AiMoveElement {
+  kind: "move_element";
+  target?: AiTarget;
+  dx?: number;
+  dy?: number;
+}
+export interface AiResizeElement {
+  kind: "resize_element";
+  target?: AiTarget;
+  w?: number;
+  h?: number;
+}
+export interface AiSetMaterial {
+  kind: "set_material";
+  target?: AiTarget;
+  material: Material;
+}
+export interface AiDuplicateElement {
+  kind: "duplicate_element";
+  target?: AiTarget;
+  dx?: number;
+  dy?: number;
+}
+export interface AiSelectElement {
+  kind: "select_element";
+  target?: AiTarget;
+}
+export interface AiClearSelection {
+  kind: "clear_selection";
+}
+export interface AiClearProject {
+  kind: "clear_project";
+}
+
+export type AiAction =
+  | AiCreateElement
+  | AiDeleteElement
+  | AiMoveElement
+  | AiResizeElement
+  | AiSetMaterial
+  | AiDuplicateElement
+  | AiSelectElement
+  | AiClearSelection
+  | AiClearProject;
+
+const DESTRUCTIVE: ReadonlySet<AiActionKind> = new Set(["delete_element", "clear_project"]);
+
+export function isDestructive(action: AiAction): boolean {
+  return DESTRUCTIVE.has(action.kind);
+}
+
+/* ------------------------------------------------------------- provider --- */
 
 export interface TutorChatMsg {
   role: "system" | "user" | "assistant";
@@ -37,7 +142,10 @@ export interface TutorRequest {
 
 export interface TutorResult {
   reply: string;
-  actions?: TutorAction[];
+  /** structured AXIOM actions the model proposeed (validated before use) */
+  actions?: AiAction[];
+  /** structured exercise offer (TITLE/OBJECTIVE/TASK/HINT) */
+  exercise?: AiExercisePayload;
 }
 
 /** Provider boundary — replaceable. Implementations must not assume a UI. */
@@ -58,13 +166,23 @@ export class TutorUnavailableError extends Error {
 
 export interface SelectedElInfo {
   id: string;
-  kind: string;
+  kind: ElementKind;
   name: string;
   x: number;
   y: number;
   w: number;
   h: number;
-  material: string;
+  material: Material;
+}
+
+/** Compact geometry used by the tutor to reason / review / place. Capped. */
+export interface StudioElementBrief {
+  type: ElementKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  material: Material;
 }
 
 export interface StudyContext {
@@ -82,6 +200,7 @@ export interface StudyContext {
   lessonCompleted: boolean;
   done: number;
   total: number;
+  exercise: AiExercise | null;
 }
 
 export interface StudioContext {
@@ -92,6 +211,7 @@ export interface StudioContext {
   counts: Record<string, number>;
   selected: SelectedElInfo | null;
   exercise: AiExercise | null;
+  elements: StudioElementBrief[];
 }
 
 export type TutorContext = StudyContext | StudioContext;
