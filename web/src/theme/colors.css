@@ -1,0 +1,55 @@
+/* AXIOM — color system. True black, hairline neutrals, one accent. */
+
+:root {
+  /* backgrounds */
+  --bg: #000000;
+  --panel: #050505;
+  --panel2: #080808;
+  --raised: #0c0c0c;
+  --raised2: #111111;
+
+  /* hairline neutrals */
+  --line: #1a1a1c;
+  --line-soft: #101012;
+
+  /* text */
+  --tx: #e8e8ea;
+  --tx2: #a0a0a8;
+  --tx3: #5e5e66;
+
+  /* accent — purple only for active/selected/focus/primary */
+  --accent: #7c5cfc;
+  --accent-hi: #8b6dff;
+  --accent-lo: #6a4de8;
+  --accent-wash: rgba(124, 92, 252, 0.08);
+  --accent-line: rgba(124, 92, 252, 0.33);
+  --accent-tx: #a78bfa;
+
+  /* semantic */
+  --danger: #e5484d;
+  --danger-wash: rgba(229, 72, 77, 0.07);
+  --danger-line: rgba(229, 72, 77, 0.25);
+  --ok: #3fb68b;
+  --ok-wash: rgba(63, 182, 139, 0.07);
+
+  /* interaction alpha fills (shared chrome) */
+  --h-sub: rgba(255, 255, 255, 0.02);
+  --h-soft: rgba(255, 255, 255, 0.05);
+  --h-mid: rgba(255, 255, 255, 0.07);
+  --h-strong: rgba(255, 255, 255, 0.1);
+  --h-press: rgba(255, 255, 255, 0.12);
+
+  /* canvas */
+  --grid: rgba(255, 255, 255, 0.02);
+  --grid-mid: rgba(255, 255, 255, 0.05);
+  --grid-strong: rgba(255, 255, 255, 0.08);
+  --el-edge: rgba(255, 255, 255, 0.11);
+  --el-highlight: rgba(255, 255, 255, 0.13);
+
+  /* material swatches (canvas + inspector) */
+  --mat-concrete: #8e8b86;
+  --mat-brick: #9c5a3c;
+  --mat-glass: #8e8aa8;
+  --mat-timber: #a67c4a;
+  --mat-steel: #77777f;
+}

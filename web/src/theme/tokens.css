@@ -1,0 +1,36 @@
+/* AXIOM — layout + motion tokens. Tight editor spacing. */
+
+:root {
+  /* chrome metrics */
+  --activity-w: 48px;
+  --titlebar-h: 34px;
+  --statusbar-h: 24px;
+  --dock-w: 204px;
+  --inspector-w: 264px;
+  --ctl-h: 26px;
+  --rail-item-h: 40px;
+
+  /* radii — small by design */
+  --r-sm: 3px;
+  --r-md: 4px;
+
+  /* studio sheet */
+  --sheet-w: 900px;
+  --sheet-h: 600px;
+  --grid-step: 44px;
+  --snap: 8px;
+
+  /* motion */
+  --t-fast: 120ms;
+  --t-page: 140ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* z layers */
+  --z-canvas: 1;
+  --z-handle: 2;
+  --z-statusbar: 30;
+  --z-titlebar: 40;
+  --z-popover: 50;
+  --z-toast: 60;
+}

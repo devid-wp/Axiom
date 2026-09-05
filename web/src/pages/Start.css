@@ -1,0 +1,39 @@
+.start {
+  display: flex;
+  background: var(--bg);
+}
+
+.start__rail {
+  width: 220px;
+  flex-shrink: 0;
+}
+
+.start__column {
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  padding-top: 40px;
+  align-self: flex-start;
+}
+
+.start__version {
+  font-size: var(--fs-meta);
+  color: var(--tx3);
+}
+
+.start__gap-lg {
+  height: 16px;
+}
+.start__gap-sm {
+  height: 4px;
+}
+
+.start__fill {
+  flex: 1;
+}
+
+.start__footer {
+  font-size: var(--fs-meta);
+  color: var(--tx3);
+  padding-top: 8px;
+}
