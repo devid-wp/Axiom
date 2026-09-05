@@ -7,6 +7,7 @@
   --statusbar-h: 24px;
   --dock-w: 204px;
   --inspector-w: 264px;
+  --ai-drawer-w: 320px;
   --ctl-h: 26px;
   --rail-item-h: 40px;
 
@@ -33,4 +34,10 @@
   --z-titlebar: 40;
   --z-popover: 50;
   --z-toast: 60;
+}
+
+@media (min-width: 1600px) {
+  :root {
+    --ai-drawer-w: 360px;
+  }
 }

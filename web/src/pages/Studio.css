@@ -91,29 +91,76 @@
   background: var(--bg);
 }
 
-/* AI assistant — compact contextual drawer pinned to the viewport's bottom-right */
+/* AI assistant — slide-out drawer pinned to the right of the viewport.
+   Stays mounted; opens/closes with a transform so it feels native. */
 .studio-ai-drawer {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
-  width: 300px;
-  height: 62%;
-  max-height: 340px;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--ai-drawer-w);
   z-index: var(--z-popover);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
-  animation: ai-in var(--t-page) var(--ease-out);
+  border-left: 1px solid var(--line-soft);
+  background: var(--panel);
+  box-shadow: -18px 0 48px rgba(0, 0, 0, 0.55);
+  transform: translateX(100%);
+  opacity: 0;
+  visibility: hidden;
+  transition: transform 200ms var(--ease-out), opacity 160ms var(--ease-out), visibility 0s linear 200ms;
+  pointer-events: none;
 }
-@keyframes ai-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+.studio-ai-drawer--open {
+  transform: translateX(0);
+  opacity: 1;
+  visibility: visible;
+  transition: transform 200ms var(--ease-out), opacity 160ms var(--ease-out), visibility 0s;
+  pointer-events: auto;
+}
+.studio-ai-drawer .ai {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+/* AI entry button in the viewport header — obvious, purple, labelled */
+.viewport-ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  margin-left: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--tx2);
+  background: var(--raised);
+  flex-shrink: 0;
+  transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
+}
+.viewport-ai__glyph {
+  font-size: 12px;
+  color: var(--accent-tx);
+  line-height: 1;
+}
+.viewport-ai__label {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.viewport-ai:hover {
+  border-color: var(--accent-line);
+  color: var(--accent-tx);
+  background: var(--accent-wash);
+}
+.viewport-ai--on {
+  border-color: var(--accent-line);
+  color: var(--accent-tx);
+  background: var(--accent-wash);
+}
+.viewport-ai--on .viewport-ai__glyph {
+  color: var(--accent-hi);
 }
 
 /* brief highlight around objects an AI action just touched */

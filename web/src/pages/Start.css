@@ -1,3 +1,4 @@
+/* AXIOM Start — dense editorial home for a serious creative app. */
 .start {
   display: flex;
   background: var(--bg);
@@ -12,13 +13,44 @@
   display: flex;
   flex-direction: column;
   width: 560px;
-  padding-top: 40px;
+  padding-top: 28px;
   align-self: flex-start;
 }
 
+.start__masthead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.start__logo {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--tx);
+}
 .start__version {
   font-size: var(--fs-meta);
   color: var(--tx3);
+}
+
+.start__greeting {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 10px;
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 12px;
+}
+.start__greet-label {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  color: var(--accent-tx);
+}
+.start__greet-body {
+  font-size: var(--fs-major);
+  font-weight: 700;
+  color: var(--tx);
 }
 
 .start__gap-lg {
@@ -26,6 +58,92 @@
 }
 .start__gap-sm {
   height: 4px;
+}
+
+.start__block {
+  display: flex;
+  flex-direction: column;
+}
+
+/* continue card */
+.start__continue {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.start__continue-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.start__continue-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--tx);
+}
+.start__continue-meta {
+  font-size: var(--fs-meta);
+  color: var(--tx3);
+}
+.start__continue-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* AI entry */
+.start__ai-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  background: var(--accent-wash);
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.start__ai-row:hover {
+  background: rgba(124, 92, 252, 0.14);
+  border-color: var(--accent);
+}
+.start__ai-glyph {
+  font-size: 16px;
+  color: var(--accent-tx);
+  line-height: 1;
+}
+.start__ai-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.start__ai-title {
+  font-size: var(--fs-ctl);
+  font-weight: 700;
+  color: var(--tx);
+}
+.start__ai-meta {
+  font-size: var(--fs-meta);
+  color: var(--tx2);
+}
+.start__ai-open {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent-tx);
+  flex-shrink: 0;
+}
+
+.start__empty {
+  font-size: var(--fs-meta);
+  color: var(--tx3);
+  padding: 4px 0;
 }
 
 .start__fill {

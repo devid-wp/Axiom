@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useUi } from "@/store/ui";
 import { useStudio } from "@/store/studio";
+import { useStudy, lessonKey } from "@/store/study";
+import { courses } from "@/data/content";
 import { useTutor, startExerciseFromMessage } from "@/ai/service";
 import { studySuggestions, studioSuggestions, type Suggestion } from "@/ai/suggestions";
 import { buildStudioContext, buildStudyContext } from "@/ai/prompts";
@@ -31,6 +33,7 @@ export function AiChat({ scope, onClose }: AiChatProps) {
   const lang = useUi((s) => s.lang);
   const s = STR[lang];
   const [input, setInput] = useState("");
+  const msgsRef = useRef<HTMLDivElement>(null);
 
   const session = useTutor((st) => st.sessions[scope]);
   const mode = useTutor((st) => st.mode);
@@ -51,6 +54,11 @@ export function AiChat({ scope, onClose }: AiChatProps) {
   const thinking = session.status === "thinking";
   const modeLabel = mode === "live" ? s.aiLive : mode === "mock" ? s.aiOffline : "";
 
+  useEffect(() => {
+    const el = msgsRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [session.messages.length, thinking, session.pending]);
+
   const submit = (text: string) => {
     const q = text.trim();
     if (!q || thinking) return;
@@ -60,10 +68,30 @@ export function AiChat({ scope, onClose }: AiChatProps) {
 
   const undo = () => useStudio.getState().undo();
 
+  /* ---- visible context --------------------------------------------------- */
+  let ctxLabel = "";
+  let ctxMeta = "";
+  if (scope === "studio") {
+    const st = useStudio.getState();
+    const proj = st.projects[st.currentIdx];
+    ctxLabel = proj?.name ? `${s.aiScopeStudio} · ${proj.name}` : s.aiScopeStudio;
+    ctxMeta = `${proj?.elements.length ?? 0} ${s.elements}`;
+    if (st.selectedId && proj?.elements.some((e) => e.id === st.selectedId)) ctxMeta += ` · 1 ${s.ctxSel}`;
+  } else {
+    const st = useStudy.getState();
+    const c = courses[st.course];
+    const l = c?.lessons[st.lesson];
+    ctxLabel = l ? `${c.title[lang].split(" — ")[0].split(" (")[0]} · ${l.title[lang]}` : s.aiScopeStudy;
+    ctxMeta = `L${String(st.lesson + 1).padStart(2, "0")}${l ? ` · ${l.level}` : ""}`;
+  }
+
   return (
     <div className={`ai ai--${scope}`}>
       <div className="ai__head">
-        <span className="ai__title">{scope === "study" ? s.aiTutor : s.aiStudio}</span>
+        <div className="ai__brand">
+          <span className="ai__brand-title">AXIOM AI</span>
+          <span className="ai__brand-sub">{s.aiRole}</span>
+        </div>
         <span className="ai__mode">
           <span className={`ai__dot ${mode === "live" ? "ai__dot--live" : "ai__dot--off"}`} />
           {modeLabel}
@@ -79,6 +107,12 @@ export function AiChat({ scope, onClose }: AiChatProps) {
             ×
           </button>
         )}
+      </div>
+
+      <div className="ai__ctx" title={ctxLabel}>
+        <span className="ai__ctx-k mono">{s.aiContext}</span>
+        <span className="ai__ctx-body">{ctxLabel}</span>
+        <span className="ai__ctx-meta mono">{ctxMeta}</span>
       </div>
 
       {exercise && (
@@ -103,9 +137,20 @@ export function AiChat({ scope, onClose }: AiChatProps) {
         </div>
       </div>
 
-      <div className="ai__msgs">
+      <div className="ai__msgs" ref={msgsRef}>
         {session.messages.length === 0 && (
-          <div className="ai__empty">{scope === "study" ? s.aiEmptyStudy : s.aiEmptyStudio}</div>
+          <div className="ai__pick">
+            <div className="ai__pick-q">{scope === "study" ? s.aiEmptyStudyTitle : s.aiEmptyStudioTitle}</div>
+            <p className="ai__pick-hint">{scope === "study" ? s.aiEmptyStudy : s.aiEmptyStudio}</p>
+            <div className="ai__pick-list">
+              {suggestions.slice(0, 3).map((sg, i) => (
+                <button key={i} className="ai__pick-row" onClick={() => submit(sg.question)}>
+                  <span className="ai__pick-arrow mono">{"\u2192"}</span>
+                  <span>{sg.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {session.messages.map((m, i) => (
           <div key={i} className={`ai__msg ai__msg--${m.role}`}>
@@ -196,15 +241,22 @@ export function AiChat({ scope, onClose }: AiChatProps) {
           submit(input);
         }}
       >
-        <input
+        <textarea
           className="ai__input"
           value={input}
           disabled={thinking}
           placeholder={s.aiPlaceholder}
+          rows={1}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit(input);
+            }
+          }}
         />
-        <button className="ai__send" type="submit" disabled={thinking || !input.trim()} onClick={() => submit(input)}>
-          {s.aiSend} ↵
+        <button className="ai__send" type="submit" disabled={thinking || !input.trim()}>
+          {"\u2192"}
         </button>
       </form>
     </div>

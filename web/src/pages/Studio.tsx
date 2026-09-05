@@ -309,6 +309,20 @@ export function StudioPage() {
   const sel = elements.find((e) => e.id === selectedId);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiTab, setAiTab] = useState<"chat" | "challenge">("chat");
+  const aiOpenRef = useRef(aiOpen);
+  useEffect(() => {
+    aiOpenRef.current = aiOpen;
+  }, [aiOpen]);
+
+  const aiRequest = useUi((s) => s.aiRequest);
+  useEffect(() => {
+    if (aiRequest > 0) {
+      const u = useUi.getState();
+      u.consumeAiRequest();
+      setAiOpen(true);
+      setAiTab("chat");
+    }
+  }, [aiRequest]);
   const exercise = useTutor((st) => st.exercise);
 
   useEffect(() => {
@@ -355,6 +369,10 @@ export function StudioPage() {
         return;
       }
       if (e.key === "Escape") {
+        if (aiOpenRef.current) {
+          setAiOpen(false);
+          return;
+        }
         st.deselect();
         return;
       }
@@ -453,19 +471,28 @@ export function StudioPage() {
           <span className={selectedId ? "viewport-info__sel mono viewport-info__sel--on" : "viewport-info__sel mono"}>
             {sel ? `${elementName(project!, sel.id)} · ${MATERIAL_LABELS[sel.material]}` : s.noSelectionHint}
           </span>
+          <button
+            className={`viewport-ai ${aiOpen ? "viewport-ai--on" : ""}`}
+            onClick={() => {
+              setAiOpen((v) => !v);
+              if (!aiOpen) setAiTab("chat");
+            }}
+            title={s.aiAskCta}
+          >
+            <span className="viewport-ai__glyph">◇</span>
+            <span className="viewport-ai__label mono">{s.aiAskAi}</span>
+          </button>
         </div>
         <Canvas />
         <ActionToast />
         <ExerciseStrip onOpen={() => setAiOpen(true)} />
-        {aiOpen && (
-          <div className="studio-ai-drawer">
-            <AiChat scope="studio" onClose={() => setAiOpen(false)} />
-          </div>
-        )}
+        <div className={`studio-ai-drawer ${aiOpen ? "studio-ai-drawer--open" : ""}`} aria-hidden={!aiOpen}>
+          <AiChat scope="studio" onClose={() => setAiOpen(false)} />
+        </div>
       </section>
 
       <aside className={`studio-inspector ${aiOpen ? "studio-inspector--ai" : ""}`}>
-        <div className={`inspector-ai-toggle ${exercise ? "inspector-ai-toggle--active" : ""}`}>
+        <div className={`inspector-ai-toggle ${aiOpen || exercise ? "inspector-ai-toggle--active" : ""}`}>
           <span className="inspector-ai-toggle__label mono">
             {exercise ? `${s.aiChallenge} · ${exercise.title}` : s.aiStudio}
           </span>
@@ -476,8 +503,9 @@ export function StudioPage() {
               setAiOpen(next);
               if (next) setAiTab("chat");
             }}
+            title={s.aiAskCta}
           >
-            {aiOpen ? "×" : "AI"}
+            {aiOpen ? "×" : "◇ AI"}
           </button>
         </div>
         <Inspector />

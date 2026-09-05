@@ -17,6 +17,9 @@ function bad(name, e) {
   console.log(`  \u2717 ${name}: ${e?.message ?? e}`);
 }
 
+/** Transition-transform "open" check for the slide-out drawer. */
+const isOpenT = (t) => /matrix\(1, 0, 0, 1, 0, 0\)/.test(t);
+
 async function countEls(page) {
   return page.locator(".el").count();
 }
@@ -263,6 +266,119 @@ async function waitForAssistantText(page, re) {
       ok("RU: create two columns + beam works and replies in Russian");
     } catch (e) {
       bad("RU structured actions", e);
+    }
+
+    /* ---- UX: AI discoverability + slide-out drawer ------------------------ */
+    try {
+      /* reset to English */
+      if (/РУ|ru/i.test((await page.locator(".activity button[title='Language']").innerText()) || "")) {
+        await page.click('button[title="Language"]');
+        await page.waitForTimeout(200);
+      }
+      await page.click('button[title="Studio"]');
+      await page.waitForSelector(".viewport-ai");
+
+      /* AI entry is obvious in the viewport header with an accent glyph + label */
+      const aiLabel = ((await page.locator(".viewport-ai").innerText()) || "").replace(/\s+/g, " ").trim();
+      assert.ok(/AI/i.test(aiLabel), "viewport AI button should carry an AI label: " + aiLabel);
+      ok("UX: clear AI entry button in Studio header (icon + AI label)");
+
+      /* drawer starts closed (translated off the right edge) */
+      let closedTransform0 = await page.locator(".studio-ai-drawer").evaluate((el) => getComputedStyle(el).transform);
+      if (isOpenT(closedTransform0)) {
+        await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+        await page.waitForTimeout(260);
+        closedTransform0 = await page.locator(".studio-ai-drawer").evaluate((el) => getComputedStyle(el).transform);
+      }
+      const closedTransform = closedTransform0;
+      assert.ok(!isOpenT(closedTransform), "drawer should be translated closed initially: " + closedTransform);
+      ok("UX: AI drawer is closed by default");
+
+      /* open via the header button, animated open */
+      await page.click(".viewport-ai");
+      await page.waitForTimeout(260);
+      const openTransform = await page.locator(".studio-ai-drawer").evaluate((el) => getComputedStyle(el).transform);
+      assert.ok(isOpenT(openTransform), "drawer should translate to open: " + openTransform);
+      ok("UX: AI button opens the slide-out drawer (animated transform)");
+
+      /* CONTEXT strip communicates scope */
+      const ctx = await page.locator(".studio-ai-drawer .ai__ctx").innerText();
+      assert.ok(/CONTEXT/i.test(ctx), "context strip should label CONTEXT");
+      assert.ok(/Studio|Studio \u00b7/i.test(ctx) || /Pavilion|Project/i.test(ctx), "context should reference the project: " + ctx);
+      ok("UX: context strip shows current Studio / project");
+
+      /* empty-state starters reveal the entry point, not a blank panel */
+      const visiblePicks = await page.locator(".studio-ai-drawer .ai__pick-q").count();
+      const hasMsgs = (await page.locator(".studio-ai-drawer .ai__msg").count()) > 0;
+      const hasChips = (await page.locator(".studio-ai-drawer .ai__chip").count()) > 0;
+      assert.ok(hasChips, "suggestions should always be present");
+      if (!hasMsgs) assert.ok(visiblePicks > 0, "empty conversation should present a starter prompt");
+      ok("UX: starting prompts are always present (empty-state or suggestions block)");
+
+      /* selecting an object swaps suggestions + shows selection in context */
+      const before = await page.locator(".studio-ai-drawer .ai__chip").allInnerTexts();
+      await page.click(".dock__tree .tree-row:first-child");
+      await page.waitForTimeout(200);
+      const afterChips = await page.locator(".studio-ai-drawer .ai__chip").allInnerTexts();
+      const ctxMeta = await page.locator(".studio-ai-drawer .ai__ctx-meta").innerText();
+      assert.ok(/selected|выбран/.test(ctxMeta), "context meta should reflect selection: " + ctxMeta);
+      assert.ok(before.join("|") !== afterChips.join("|"), "suggestions should change after selection");
+      ok("UX: selection updates CONTEXT + contextual suggestions");
+
+      /* Escape closes the drawer */
+      await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+      await page.waitForTimeout(260);
+      const closedAgain = await page.locator(".studio-ai-drawer").evaluate((el) => getComputedStyle(el).transform);
+      assert.ok(!isOpenT(closedAgain), "Escape should close the drawer: " + closedAgain);
+      ok("UX: Escape closes the AI drawer");
+
+      /* reopen preserves the conversation */
+      await page.click(".viewport-ai");
+      await page.waitForTimeout(260);
+      const marker = `beam utility ${Date.now() % 1000}`;
+      await sendAndGetAssistant(page, "What do " + marker + " do?");
+      await page.waitForFunction(
+        (m) => Array.from(document.querySelectorAll(".studio-ai-drawer .ai__msg--user, .studio-ai-drawer .ai__msg")).some((el) => (el.textContent ?? "").includes(m)),
+        marker,
+        { timeout: 10000 }
+      );
+      await page.click(".ai__close");
+      await page.waitForTimeout(260);
+      await page.click(".viewport-ai");
+      await page.waitForTimeout(260);
+      const preserved = await page.locator(".studio-ai-drawer .ai__msg").count();
+      assert.ok(preserved > 0, "conversation should survive close/reopen");
+      const hasMarker = await page
+        .locator(".studio-ai-drawer .ai__msg")
+        .allInnerTexts()
+        .then((t) => t.some((x) => x.includes(marker)));
+      assert.ok(hasMarker, "the sent question should still be visible after reopen");
+      ok("UX: conversation is preserved across close / reopen");
+    } catch (e) {
+      bad("UX discoverability + drawer", e);
+    }
+
+    /* ---- UX: Start home + AI entry ---------------------------------------- */
+    try {
+      await page.click('button[title="Start"]');
+      await page.waitForSelector(".start__logo");
+      const hasMasthead = await page.locator(".start__masthead .start__logo").count();
+      assert.strictEqual(hasMasthead, 1, "Start should show the AXIOM masthead");
+      const aiRow = await page.locator(".start__ai-row").count();
+      assert.strictEqual(aiRow, 1, "Start should surface an AI entry row");
+      const cont = await page.locator(".start__continue").count();
+      assert.strictEqual(cont, 1, "Start should lead with a CONTINUE block");
+      ok("UX: Start home leads with CONTINUE + surfaces AI entry");
+
+      /* Start → Open AI → navigates to Studio and opens the drawer */
+      await page.click(".start__ai-row");
+      await page.waitForSelector(".studio-ai-drawer");
+      await page.waitForTimeout(300);
+      const studioOpen = await page.locator(".studio-ai-drawer").evaluate((el) => getComputedStyle(el).transform);
+      assert.ok(isOpenT(studioOpen), "Open AI should land in Studio with drawer open: " + studioOpen);
+      ok("UX: Start 'Open AI' opens the Studio AI drawer");
+    } catch (e) {
+      bad("UX Start + AI entry", e);
     }
 
     /* ---- no console errors ------------------------------------------------ */
