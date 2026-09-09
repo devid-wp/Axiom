@@ -1,0 +1,66 @@
+import { HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { Theme } from "../theme/colors.slint";
+import { Type } from "../theme/typography.slint";
+import { AppState } from "../state.slint";
+import { Caption } from "../components/core.slint";
+
+// START — the launchpad of a creation tool. Command lists, no marketing.
+component CmdRow inherits Rectangle {
+    in property <string> icon;
+    in property <string> title;
+    in property <string> hint;
+    in property <bool> primary;
+    callback clicked();
+    height: 34px;
+    border-radius: 3px;
+    background: primary ? Theme.accent-wash : (touch.pressed ? #FFFFFF0B : (touch.has-hover ? #FFFFFF06 : transparent));
+    border-width: 1px;
+    border-color: primary ? Theme.accent-line : transparent;
+    animate background, border-color { duration: 120ms; }
+    HorizontalBox {
+        padding-left: 10px; padding-right: 10px; spacing: 10px;
+        Text { text: root.icon; font-size: 13px; color: primary ? Theme.accent-tx : Theme.tx3; vertical-alignment: center; width: 16px; }
+        Text { text: root.title; font-size: Type.ui; font-weight: 600; color: Theme.tx; vertical-alignment: center; }
+        Rectangle {}
+        Text { text: root.hint; font-size: Type.meta; font-family: Type.mono; color: Theme.tx3; vertical-alignment: center; }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export component StartScreen inherits Rectangle {
+    background: Theme.bg;
+    property <bool> shown: false;
+    opacity: shown ? 1 : 0;
+    animate opacity { duration: 140ms; }
+    Timer { interval: 30ms; running: !root.shown; triggered => { root.shown = true; } }
+
+    HorizontalBox {
+        padding: 0; spacing: 0;
+        Rectangle { width: 220px; }
+        VerticalBox {
+            padding-top: 40px; spacing: 0;
+            width: 560px;
+            alignment: start;
+            Text { text: "AXIOM  0.1.0 — native"; font-size: Type.meta; font-family: Type.mono; color: Theme.tx3; }
+            Rectangle { height: 16px; }
+            Caption { text: "START"; }
+            Rectangle { height: 4px; }
+            CmdRow { icon: "+"; title: "New project"; hint: "empty sheet"; primary: true; clicked => { AppState.request-new-project(); AppState.view = "studio"; } }
+            CmdRow { icon: "→"; title: "Continue — " + AppState.project-name; hint: AppState.elements.length + " el"; clicked => { AppState.view = "studio"; } }
+            CmdRow { icon: "⬢"; title: "Open Studio"; hint: "workspace"; clicked => { AppState.view = "studio"; } }
+            Rectangle { height: 16px; }
+            Caption { text: "LEARN"; }
+            Rectangle { height: 4px; }
+            CmdRow { icon: "◐"; title: "Continue study — Light & Material"; hint: "9 min"; clicked => { AppState.view = "study"; } }
+            CmdRow { icon: "◎"; title: "Browse topics"; hint: "9 entries"; clicked => { AppState.view = "explore"; } }
+            Rectangle { height: 16px; }
+            Caption { text: "RECENT"; }
+            Rectangle { height: 4px; }
+            CmdRow { icon: "▭"; title: AppState.project-name; hint: AppState.elements.length + " el · local"; clicked => { AppState.view = "studio"; } }
+            Rectangle { height: 8px; }
+            Rectangle {}
+            Text { text: "config · ~/.local/share/axiom"; font-size: Type.meta; font-family: Type.mono; color: Theme.tx3; }
+        }
+        Rectangle {}
+    }
+}

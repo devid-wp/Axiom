@@ -1,42 +1,46 @@
-/* Studio workspace: dock + viewport + inspector. */
+/* Studio — architectural workspace: dock | viewport | inspector. */
 
 .studio {
   display: flex;
   background: var(--bg);
 }
 
-/* left dock */
+/* ============ LEFT DOCK ============ */
 .studio-dock {
   width: var(--dock-w);
-  background: var(--panel);
+  background: var(--surface);
   border-right: 1px solid var(--line-soft);
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .dock__scroll {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 6px;
+  padding: var(--sp-3) var(--sp-2);
   gap: 2px;
   min-height: 0;
 }
 
 .dock__group {
-  padding: 0 2px;
-  margin-top: 2px;
+  padding: 0 var(--sp-1);
+  margin-top: var(--sp-1);
+  margin-bottom: var(--sp-1);
 }
 
 .dock__gap {
-  height: 6px;
+  height: var(--sp-2);
 }
 
 .dock__layers-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px;
-  margin-top: 2px;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  margin-top: var(--sp-1);
 }
 
 .dock__spacer {
@@ -45,12 +49,12 @@
 
 .dock__count {
   font-size: var(--fs-micro);
-  color: var(--tx3);
+  color: var(--tx4);
 }
 
 .dock__clear {
   font-size: var(--fs-micro);
-  color: var(--tx3);
+  color: var(--tx4);
   transition: color var(--t-fast);
 }
 .dock__clear:hover {
@@ -59,8 +63,8 @@
 
 .dock__empty {
   font-size: var(--fs-meta);
-  color: var(--tx3);
-  padding: 2px 8px;
+  color: var(--tx4);
+  padding: var(--sp-1) var(--sp-2);
 }
 
 .dock__tree {
@@ -77,11 +81,13 @@
 
 .dock__foot {
   font-size: var(--fs-micro);
-  color: var(--tx3);
-  padding: 6px 8px 2px;
+  color: var(--tx4);
+  padding: var(--sp-2) var(--sp-2) var(--sp-1);
+  border-top: 1px solid var(--line-soft);
+  margin-top: var(--sp-2);
 }
 
-/* viewport */
+/* ============ VIEWPORT ============ */
 .studio-viewport {
   position: relative;
   flex: 1;
@@ -91,8 +97,6 @@
   background: var(--bg);
 }
 
-/* AI assistant — slide-out drawer pinned to the right of the viewport.
-   Stays mounted; opens/closes with a transform so it feels native. */
 .studio-ai-drawer {
   position: absolute;
   top: 0;
@@ -102,9 +106,9 @@
   z-index: var(--z-popover);
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--line-soft);
-  background: var(--panel);
-  box-shadow: -18px 0 48px rgba(0, 0, 0, 0.55);
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: -18px 0 48px rgba(0, 0, 0, 0.5);
   transform: translateX(100%);
   opacity: 0;
   visibility: hidden;
@@ -124,46 +128,41 @@
   border-radius: 0;
 }
 
-/* AI entry button in the viewport header — obvious, purple, labelled */
+/* AI entry in viewport header */
 .viewport-ai {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 20px;
-  padding: 0 8px;
-  margin-left: 8px;
+  height: 28px;
+  padding: 0 var(--sp-3);
+  margin-left: var(--sp-3);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  color: var(--tx2);
-  background: var(--raised);
+  color: var(--tx3);
+  background: var(--surface);
   flex-shrink: 0;
   transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
 }
-.viewport-ai__glyph {
-  font-size: 12px;
-  color: var(--accent-tx);
-  line-height: 1;
-}
-.viewport-ai__label {
-  font-size: var(--fs-micro);
-  font-weight: 700;
-  letter-spacing: 1px;
-}
 .viewport-ai:hover {
-  border-color: var(--accent-line);
+  border-color: var(--accent);
   color: var(--accent-tx);
   background: var(--accent-wash);
 }
 .viewport-ai--on {
-  border-color: var(--accent-line);
+  border-color: var(--accent);
   color: var(--accent-tx);
   background: var(--accent-wash);
 }
-.viewport-ai--on .viewport-ai__glyph {
-  color: var(--accent-hi);
+.viewport-ai svg {
+  color: var(--accent-tx);
+}
+.viewport-ai__label {
+  font-size: var(--fs-ctl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.1em;
 }
 
-/* brief highlight around objects an AI action just touched */
+/* AI flash on touched objects */
 .el__flash {
   fill: none;
   stroke: var(--accent);
@@ -173,21 +172,13 @@
   animation: el-flash 1.5s var(--ease-out) forwards;
 }
 @keyframes el-flash {
-  0% {
-    opacity: 0;
-  }
-  15% {
-    opacity: 1;
-  }
-  70% {
-    opacity: 0.9;
-  }
-  100% {
-    opacity: 0;
-  }
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  70% { opacity: 0.9; }
+  100% { opacity: 0; }
 }
 
-/* "AI changed the canvas" toast */
+/* AI changed canvas toast */
 .action-toast {
   position: absolute;
   left: 50%;
@@ -195,11 +186,11 @@
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
   padding: 6px 10px;
   border: 1px solid var(--accent-line);
   border-radius: var(--r-sm);
-  background: rgba(18, 18, 24, 0.92);
+  background: rgba(18, 18, 24, 0.94);
   color: var(--accent-tx);
   font-size: var(--fs-ctl);
   z-index: var(--z-popover);
@@ -207,14 +198,14 @@
   pointer-events: auto;
 }
 .action-toast__body {
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 .action-toast__undo {
   padding: 1px 8px;
   border: 1px solid var(--accent-line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-xs);
   font-size: var(--fs-micro);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--accent-tx);
   transition: background var(--t-fast);
 }
@@ -222,23 +213,17 @@
   background: var(--accent-wash);
 }
 @keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
+  from { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
-/* challenge strip above the drawer */
+/* challenge strip above drawer */
 .studio-exercise {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   max-width: 420px;
-  margin: 8px auto 0;
+  margin: var(--sp-2) auto 0;
   padding: 6px 12px;
   border: 1px solid var(--accent-line);
   border-radius: var(--r-sm);
@@ -248,7 +233,7 @@
 }
 .studio-exercise__label {
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-semibold);
   letter-spacing: 1.2px;
   color: var(--accent-tx);
   flex-shrink: 0;
@@ -265,15 +250,22 @@
   color: var(--accent-tx);
 }
 
-
+/* viewport top bar */
 .viewport-info {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 26px;
-  padding: 0 10px;
-  background: var(--panel);
+  gap: var(--sp-3);
+  height: 30px;
+  padding: 0 var(--sp-3);
+  background: var(--surface);
   border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+.viewport-info__tool {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.12em;
+  color: var(--accent-tx);
   flex-shrink: 0;
 }
 .viewport-info__hint {
@@ -288,7 +280,7 @@
 }
 .viewport-info__sel {
   font-size: var(--fs-meta);
-  color: var(--tx3);
+  color: var(--tx4);
   transition: color var(--t-fast);
   white-space: nowrap;
 }
@@ -296,12 +288,22 @@
   color: var(--accent-tx);
 }
 
-/* ruler */
+.viewport-info__zoom {
+  font-size: var(--fs-micro);
+  color: var(--tx4);
+  padding: 1px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-xs);
+  flex-shrink: 0;
+}
+
+/* ============ RULER ============ */
 .ruler {
   position: relative;
-  height: 16px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line-soft);
+  height: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-bottom: none;
   flex-shrink: 0;
   align-self: flex-start;
 }
@@ -316,7 +318,7 @@
   position: absolute;
   top: 1px;
   font-size: 9px;
-  color: var(--tx3);
+  color: var(--tx4);
 }
 .ruler__edge {
   position: absolute;
@@ -327,25 +329,33 @@
   background: var(--line-soft);
 }
 
-/* canvas */
+/* ============ CANVAS ============ */
 .canvas-zone {
   flex: 1;
   min-height: 0;
   display: grid;
   place-items: center;
   overflow: hidden;
-  padding: 0;
+  position: relative;
+}
+.canvas-zone::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(124, 92, 252, 0.035), transparent 60%);
+  pointer-events: none;
 }
 
 .canvas-stage {
   display: flex;
   flex-direction: column;
+  filter: drop-shadow(0 30px 80px rgba(0, 0, 0, 0.55));
 }
 
 .sheet {
   background: #0a0a0b;
   border: 1px solid var(--line-soft);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
 }
 
 .sheet line,
@@ -360,10 +370,14 @@
   cursor: crosshair;
 }
 
+.canvas-zone--panning {
+  cursor: grabbing;
+}
+
 .sheet__hint {
   font-family: var(--font-mono);
   font-size: var(--fs-meta);
-  fill: var(--tx3);
+  fill: var(--tx4);
   user-select: none;
 }
 
@@ -372,20 +386,16 @@
   cursor: move;
 }
 .el__body:hover {
-  filter: brightness(1.07);
+  filter: brightness(1.08);
 }
 .el__body--selected {
   filter: none;
 }
 
-.el__lit {
-  pointer-events: none;
-}
-
 .el__label {
   font-family: var(--font-body);
   font-size: 8px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   letter-spacing: 1px;
   fill: rgba(255, 255, 255, 0.8);
   pointer-events: none;
@@ -406,11 +416,11 @@
   fill: var(--accent-hi);
 }
 
-/* inspector */
+/* ============ INSPECTOR ============ */
 .studio-inspector {
   position: relative;
   width: var(--inspector-w);
-  background: var(--panel);
+  background: var(--surface);
   border-left: 1px solid var(--line-soft);
   flex-shrink: 0;
   display: flex;
@@ -421,9 +431,13 @@
 .inspector-ai-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px 6px 10px;
+  gap: var(--sp-2);
+  padding: 6px var(--sp-3);
   border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+.inspector-ai-toggle > svg {
+  color: var(--accent-tx);
   flex-shrink: 0;
 }
 .inspector-ai-toggle__label {
@@ -445,14 +459,14 @@
   display: grid;
   place-items: center;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-xs);
   font-size: var(--fs-ctl);
-  font-weight: 700;
-  color: var(--tx2);
+  font-weight: var(--fw-bold);
+  color: var(--tx3);
   transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
 }
 .inspector-ai-toggle__btn:hover {
-  border-color: var(--accent-line);
+  border-color: var(--accent);
   color: var(--accent-tx);
   background: var(--accent-wash);
 }

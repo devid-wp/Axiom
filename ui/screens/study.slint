@@ -1,0 +1,207 @@
+import { HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { Theme } from "../theme/colors.slint";
+import { Type } from "../theme/typography.slint";
+import { AppState } from "../state.slint";
+import { BarBtn, Caption } from "../components/core.slint";
+
+// STUDY v3 — data-driven: course tree, lesson reader, details rail.
+
+component TreeHead inherits Rectangle {
+    in property <string> text;
+    in property <string> meta;
+    in property <bool> active;
+    callback clicked();
+    height: 40px;
+    border-radius: 3px;
+    background: active ? Theme.accent-wash : (touch.pressed ? #FFFFFF0B : (touch.has-hover ? #FFFFFF06 : transparent));
+    animate background { duration: 120ms; }
+    HorizontalBox {
+        padding-left: 8px; padding-right: 8px; spacing: 6px;
+        Rectangle { width: 2px; height: 14px; background: active ? Theme.accent : transparent; }
+        VerticalBox {
+            spacing: 0;
+            Text { text: root.text; font-size: Type.ctl; font-weight: 600; color: active ? Theme.tx : Theme.tx2; }
+            Text { text: root.meta; font-size: Type.micro; font-family: Type.mono; color: Theme.tx3; }
+        }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+component LessonRow inherits Rectangle {
+    in property <string> num;
+    in property <string> text;
+    in property <string> dur;
+    in property <bool> active;
+    in property <bool> done;
+    callback clicked();
+    height: 24px;
+    background: active ? Theme.accent-wash : (touch.has-hover ? #FFFFFF05 : transparent);
+    animate background { duration: 120ms; }
+    HorizontalBox {
+        padding-left: 24px; padding-right: 8px; spacing: 8px;
+        Text { text: done ? "✓" : root.num; font-size: Type.micro; font-family: Type.mono; color: done ? Theme.ok : (active ? Theme.accent-tx : Theme.tx3); vertical-alignment: center; width: 14px; }
+        Text { text: root.text; font-size: Type.ctl; color: active ? Theme.tx : Theme.tx2; vertical-alignment: center; }
+        Rectangle {}
+        Text { text: root.dur; font-size: Type.micro; font-family: Type.mono; color: Theme.tx3; vertical-alignment: center; }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+component QuizOpt inherits Rectangle {
+    in property <string> text;
+    in property <bool> picked;
+    in property <bool> right;
+    in property <bool> revealed;
+    callback clicked();
+    height: 28px;
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: !revealed ? Theme.line : (right ? #3FB68B50 : #E5484D50);
+    background: picked ? (right && revealed ? Theme.ok-wash : (!revealed ? #FFFFFF08 : Theme.danger-wash)) : (touch.has-hover ? #FFFFFF05 : transparent);
+    animate background, border-color { duration: 120ms; }
+    HorizontalBox {
+        padding-left: 10px; padding-right: 10px; spacing: 8px;
+        Rectangle {
+            width: 9px; height: 9px; border-radius: 5px;
+            border-width: 1px; border-color: picked ? Theme.accent : Theme.tx3;
+            background: picked ? Theme.accent : transparent;
+        }
+        Text { text: root.text; font-size: Type.ctl; color: Theme.tx; vertical-alignment: center; }
+        Rectangle {}
+        if (revealed && right): Text { text: "✓"; font-size: Type.ctl; color: Theme.ok; vertical-alignment: center; }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+component ReaderLesson inherits VerticalBox {
+    in property <string> crumb;
+    in property <string> title;
+    in property <string> meta;
+    in property <string> body1;
+    in property <string> body2;
+    in property <string> quiz;
+    in property <string> opt-a;
+    in property <string> opt-b;
+    in property <int> picked;
+    callback pick(int);
+    callback practice();
+    spacing: 0;
+    alignment: start;
+    Text { text: root.crumb; font-size: Type.meta; font-family: Type.mono; color: Theme.tx3; }
+    Rectangle { height: 6px; }
+    Text { text: root.title; font-size: Type.major; font-weight: 700; color: Theme.tx; }
+    Text { text: root.meta; font-size: Type.meta; font-family: Type.mono; color: Theme.tx2; }
+    Rectangle { height: 12px; }
+    Text { text: root.body1; font-size: 13px; color: Theme.tx; wrap: word-wrap; }
+    Rectangle { height: 6px; }
+    Text { text: root.body2; font-size: Type.ctl; color: Theme.tx2; wrap: word-wrap; }
+    Rectangle { height: 16px; }
+    Caption { text: "CHECK — QUIZ"; }
+    Rectangle { height: 4px; }
+    Text { text: root.quiz; font-size: Type.ctl; font-weight: 600; color: Theme.tx; wrap: word-wrap; }
+    Rectangle { height: 4px; }
+    QuizOpt { text: root.opt-a; picked: root.picked == 0; right: true; revealed: root.picked >= 0; clicked => { root.pick(0); } }
+    QuizOpt { text: root.opt-b; picked: root.picked == 1; right: false; revealed: root.picked >= 0; clicked => { root.pick(1); } }
+    if (root.picked == 0): Text { text: "correct — well done!"; font-size: Type.meta; font-family: Type.mono; color: Theme.ok; }
+    if (root.picked == 1): Text { text: "not quite — re-read above."; font-size: Type.meta; font-family: Type.mono; color: Theme.danger; }
+    Rectangle { height: 16px; }
+    HorizontalBox {
+        spacing: 8px;
+        BarBtn { text: "Practice in Studio →"; kind: "primary"; clicked => { root.practice(); } }
+        Rectangle {}
+    }
+}
+
+export component StudyScreen inherits Rectangle {
+    background: Theme.bg;
+    property <bool> shown: false;
+    opacity: shown ? 1 : 0;
+    animate opacity { duration: 140ms; }
+    Timer { interval: 30ms; running: !root.shown; triggered => { root.shown = true; } }
+
+    HorizontalBox {
+        padding: 0; spacing: 0;
+
+        // ---- course tree (data-driven) ----
+        Rectangle {
+            width: 216px; background: Theme.panel;
+            VerticalBox {
+                padding: 6px; spacing: 1px;
+                Caption { text: "COURSES"; }
+                for course[i] in AppState.courses: VerticalBox {
+                    spacing: 0;
+                    TreeHead {
+                        text: course.title;
+                        meta: course.meta;
+                        active: AppState.study-course == i;
+                        clicked => { AppState.request-set-course(i); }
+                    }
+                    if AppState.study-course == i: VerticalBox {
+                        spacing: 0;
+                        for lesson[j] in course.lessons: LessonRow {
+                            num: j < 9 ? "0" + (j + 1) : "" + (j + 1);
+                            text: lesson.title;
+                            dur: lesson.duration;
+                            active: AppState.study-lesson == j;
+                            done: false;
+                            clicked => { AppState.request-set-lesson(j); }
+                        }
+                    }
+                }
+                Rectangle {}
+            }
+            Rectangle { x: parent.width - 1px; width: 1px; height: 100%; background: Theme.line-soft; }
+        }
+
+        // ---- reader (data-driven) ----
+        Rectangle {
+            VerticalBox {
+                padding-left: 28px;
+                padding-top: 20px;
+                padding-right: 20px;
+                spacing: 0;
+                width: 560px;
+                alignment: start;
+                if AppState.courses.length > 0 && AppState.study-course < AppState.courses.length: VerticalBox {
+                    spacing: 0;
+                    alignment: start;
+                    if AppState.courses[AppState.study-course].lessons.length > 0 && AppState.study-lesson < AppState.courses[AppState.study-course].lessons.length: ReaderLesson {
+                        crumb: AppState.courses[AppState.study-course].id + " / " + (AppState.study-lesson < 9 ? "0" : "") + (AppState.study-lesson + 1);
+                        title: AppState.courses[AppState.study-course].lessons[AppState.study-lesson].title;
+                        meta: AppState.courses[AppState.study-course].lessons[AppState.study-lesson].duration + " · " + AppState.courses[AppState.study-course].lessons[AppState.study-lesson].level;
+                        body1: AppState.courses[AppState.study-course].lessons[AppState.study-lesson].body1;
+                        body2: AppState.courses[AppState.study-course].lessons[AppState.study-lesson].body2;
+                        quiz: AppState.courses[AppState.study-course].lessons[AppState.study-lesson].quiz-q;
+                        opt-a: AppState.courses[AppState.study-course].lessons[AppState.study-lesson].opt-a;
+                        opt-b: AppState.courses[AppState.study-course].lessons[AppState.study-lesson].opt-b;
+                        picked: AppState.study-picked;
+                        pick(i) => { AppState.request-quiz-answer(i); }
+                        practice => { AppState.request-practice(); }
+                    }
+                }
+                Rectangle {}
+            }
+        }
+        Rectangle {}
+
+        // ---- details rail ----
+        Rectangle {
+            width: 220px; background: Theme.panel;
+            HorizontalBox {
+                padding: 0; spacing: 0;
+                Rectangle { width: 1px; background: Theme.line-soft; }
+                VerticalBox {
+                    padding: 10px; spacing: 2px;
+                    Caption { text: "PROGRESS"; }
+                    Text { text: AppState.study-pct; font-size: 22px; font-weight: 700; color: Theme.accent-tx; }
+                    Rectangle { height: 4px; border-radius: 2px; background: #FFFFFF0D; Rectangle { width: 34%; height: 100%; background: Theme.accent; border-radius: 2px; } }
+                    Text { text: AppState.study-done-count + " of " + AppState.study-total-count + " · local"; font-size: Type.meta; font-family: Type.mono; color: Theme.tx3; }
+                    Rectangle { height: 10px; }
+                    Caption { text: "ACTIONS"; }
+                    BarBtn { text: "Practice in Studio →"; kind: "primary"; clicked => { AppState.view = "studio"; } }
+                    Rectangle {}
+                }
+            }
+        }
+    }
+}

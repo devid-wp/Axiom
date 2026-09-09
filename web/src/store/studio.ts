@@ -17,6 +17,8 @@ import {
   newId,
   nowHm,
   snap8,
+  snapToElements,
+  type SnapGuide,
 } from "@/studio/domain";
 import { exportJson, loadProjects, saveProjects } from "@/studio/persistence";
 
@@ -47,10 +49,16 @@ interface StudioState {
   savedLabel: string;
   undoEnabled: boolean;
   redoEnabled: boolean;
+  zoom: number;
+  panX: number;
+  panY: number;
   _hist: History;
   _fut: History;
   _dragMove: DragMove | null;
   _dragSize: DragSize | null;
+  _panning: { startX: number; startY: number; startPanX: number; startPanY: number } | null;
+  _clipboard: StudioElement[];
+  _snapGuides: SnapGuide[];
 
   select: (id: string) => void;
   deselect: () => void;
@@ -69,13 +77,24 @@ interface StudioState {
   applyMaterial: (id: string, m: Material) => void;
   remove: (id: string) => void;
   duplicate: (id: string) => void;
-  /** Commit a whole new element list as ONE history entry (used by AI batches). */
+  copy: (id: string) => void;
+  paste: () => void;
+  moveForward: (id: string) => void;
+  moveBackward: (id: string) => void;
+  moveToFront: (id: string) => void;
+  moveToBack: (id: string) => void;
   commitElements: (elements: StudioElement[], label?: string) => void;
   undo: () => void;
   redo: () => void;
   save: () => void;
   exportCopy: () => void;
   newProject: () => void;
+  setZoom: (zoom: number) => void;
+  zoomBy: (delta: number, cx?: number, cy?: number) => void;
+  resetView: () => void;
+  startPan: (mx: number, my: number) => void;
+  dragPan: (mx: number, my: number) => void;
+  endPan: () => void;
 }
 
 const NAV_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["select", "move", "layers", "assets"] as Tool[]);
@@ -116,6 +135,10 @@ function mutateElement(
   }
 }
 
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 0.15;
+
 export const useStudio = create<StudioState>()((set, get) => ({
   projects: loadProjects(),
   currentIdx: 0,
@@ -126,10 +149,16 @@ export const useStudio = create<StudioState>()((set, get) => ({
   savedLabel: "Saved",
   undoEnabled: false,
   redoEnabled: false,
+  zoom: 1,
+  panX: 0,
+  panY: 0,
   _hist: [],
   _fut: [],
   _dragMove: null,
   _dragSize: null,
+  _panning: null,
+  _clipboard: [],
+  _snapGuides: [],
 
   select: (id) => set({ selectedId: id }),
 
@@ -179,6 +208,10 @@ export const useStudio = create<StudioState>()((set, get) => ({
       undoEnabled: false,
       redoEnabled: false,
       cursorLabel: "X — · Y —",
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      zoomLabel: "100%",
     });
   },
 
@@ -202,19 +235,24 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const proj = get().projects[get().currentIdx];
     const el = proj?.elements.find((e) => e.id === id);
     if (!el) return;
-    const nx = snap8(clamp(x - d.offX, 0, SHEET_W - el.w));
-    const ny = snap8(clamp(y - d.offY, 0, SHEET_H - el.h));
+    const others = proj?.elements ?? [];
+    const { x: nx, y: ny, guides } = snapToElements(
+      x - d.offX, y - d.offY, el.w, el.h, others, id
+    );
+    const cx = clamp(nx, 0, SHEET_W - el.w);
+    const cy = clamp(ny, 0, SHEET_H - el.h);
     const idx = get().currentIdx;
     set({
       projects: get().projects.map((p, i) =>
         i === idx
           ? {
               ...p,
-              elements: p.elements.map((e) => (e.id === id ? { ...e, x: nx, y: ny } : e)),
+              elements: p.elements.map((e) => (e.id === id ? { ...e, x: cx, y: cy } : e)),
             }
           : p
       ),
       _dragMove: { ...d, dirty: true },
+      _snapGuides: guides,
     });
   },
 
@@ -251,7 +289,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const dm = get()._dragMove;
     const ds = get()._dragSize;
     const dirty = (dm?.dirty ?? false) || (ds?.dirty ?? false);
-    set({ _dragMove: null, _dragSize: null });
+    set({ _dragMove: null, _dragSize: null, _snapGuides: [] });
     if (dirty) {
       saveProjects(get().projects);
       set({ savedLabel: `Saved ${nowHm()}` });
@@ -320,6 +358,110 @@ export const useStudio = create<StudioState>()((set, get) => ({
         i === idx ? { ...p, elements: [...p.elements, dup] } : p
       ),
       selectedId: dup.id,
+      undoEnabled: get()._hist.length > 0,
+      redoEnabled: false,
+    });
+    saveProjects(get().projects);
+    set({ savedLabel: `Saved ${nowHm()}` });
+  },
+
+  copy: (id) => {
+    const proj = get().projects[get().currentIdx];
+    const el = proj?.elements.find((e) => e.id === id);
+    if (!el) return;
+    set({ _clipboard: [{ ...el }] });
+  },
+
+  paste: () => {
+    const clip = get()._clipboard;
+    if (clip.length === 0) return;
+    const idx = get().currentIdx;
+    const proj = get().projects[idx];
+    if (!proj) return;
+    pushHistory(get, set);
+    const pasted = clip.map((el) => ({
+      ...el,
+      id: newId(),
+      x: snap8(clamp(el.x + 16, 0, SHEET_W - el.w)),
+      y: snap8(clamp(el.y + 16, 0, SHEET_H - el.h)),
+    }));
+    set({
+      projects: get().projects.map((p, i) =>
+        i === idx ? { ...p, elements: [...p.elements, ...pasted] } : p
+      ),
+      selectedId: pasted[0].id,
+      undoEnabled: get()._hist.length > 0,
+      redoEnabled: false,
+    });
+    saveProjects(get().projects);
+    set({ savedLabel: `Saved ${nowHm()}` });
+  },
+
+  moveForward: (id) => {
+    const idx = get().currentIdx;
+    const els = get().projects[idx]?.elements;
+    if (!els) return;
+    const i = els.findIndex((e) => e.id === id);
+    if (i < 0 || i >= els.length - 1) return;
+    pushHistory(get, set);
+    const next = [...els];
+    [next[i], next[i + 1]] = [next[i + 1], next[i]];
+    set({
+      projects: get().projects.map((p, j) => (j === idx ? { ...p, elements: next } : p)),
+      undoEnabled: get()._hist.length > 0,
+      redoEnabled: false,
+    });
+    saveProjects(get().projects);
+    set({ savedLabel: `Saved ${nowHm()}` });
+  },
+
+  moveBackward: (id) => {
+    const idx = get().currentIdx;
+    const els = get().projects[idx]?.elements;
+    if (!els) return;
+    const i = els.findIndex((e) => e.id === id);
+    if (i <= 0) return;
+    pushHistory(get, set);
+    const next = [...els];
+    [next[i], next[i - 1]] = [next[i - 1], next[i]];
+    set({
+      projects: get().projects.map((p, j) => (j === idx ? { ...p, elements: next } : p)),
+      undoEnabled: get()._hist.length > 0,
+      redoEnabled: false,
+    });
+    saveProjects(get().projects);
+    set({ savedLabel: `Saved ${nowHm()}` });
+  },
+
+  moveToFront: (id) => {
+    const idx = get().currentIdx;
+    const els = get().projects[idx]?.elements;
+    if (!els) return;
+    const i = els.findIndex((e) => e.id === id);
+    if (i < 0 || i === els.length - 1) return;
+    pushHistory(get, set);
+    const el = els[i];
+    const next = [...els.slice(0, i), ...els.slice(i + 1), el];
+    set({
+      projects: get().projects.map((p, j) => (j === idx ? { ...p, elements: next } : p)),
+      undoEnabled: get()._hist.length > 0,
+      redoEnabled: false,
+    });
+    saveProjects(get().projects);
+    set({ savedLabel: `Saved ${nowHm()}` });
+  },
+
+  moveToBack: (id) => {
+    const idx = get().currentIdx;
+    const els = get().projects[idx]?.elements;
+    if (!els) return;
+    const i = els.findIndex((e) => e.id === id);
+    if (i <= 0) return;
+    pushHistory(get, set);
+    const el = els[i];
+    const next = [el, ...els.slice(0, i), ...els.slice(i + 1)];
+    set({
+      projects: get().projects.map((p, j) => (j === idx ? { ...p, elements: next } : p)),
       undoEnabled: get()._hist.length > 0,
       redoEnabled: false,
     });
@@ -424,8 +566,43 @@ export const useStudio = create<StudioState>()((set, get) => ({
       undoEnabled: false,
       redoEnabled: false,
       cursorLabel: "X — · Y —",
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      zoomLabel: "100%",
     });
     saveProjects(get().projects);
     set({ savedLabel: `Saved ${nowHm()}` });
   },
+
+  setZoom: (zoom) => {
+    const clamped = Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom)) * 100);
+    set({ zoom: clamped / 100, zoomLabel: `${clamped}%` });
+  },
+
+  zoomBy: (delta, cx, cy) => {
+    const { zoom, panX, panY } = get();
+    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + delta));
+    if (newZoom === zoom) return;
+    const ratio = newZoom / zoom;
+    const newPanX = cx !== undefined ? cx - ratio * (cx - panX) : panX;
+    const newPanY = cy !== undefined ? cy - ratio * (cy - panY) : panY;
+    const pct = Math.round(newZoom * 100);
+    set({ zoom: newZoom, panX: newPanX, panY: newPanY, zoomLabel: `${pct}%` });
+  },
+
+  resetView: () => set({ zoom: 1, panX: 0, panY: 0, zoomLabel: "100%" }),
+
+  startPan: (mx, my) => {
+    const { panX, panY } = get();
+    set({ _panning: { startX: mx, startY: my, startPanX: panX, startPanY: panY } });
+  },
+
+  dragPan: (mx, my) => {
+    const p = get()._panning;
+    if (!p) return;
+    set({ panX: p.startPanX + (mx - p.startX), panY: p.startPanY + (my - p.startY) });
+  },
+
+  endPan: () => set({ _panning: null }),
 }));

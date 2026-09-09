@@ -23,7 +23,7 @@ body {
   color: var(--tx);
   font-family: var(--font-body);
   font-size: var(--fs-ui);
-  line-height: 1.4;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
@@ -67,18 +67,19 @@ a {
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--raised2);
-  border-radius: 4px;
+  background: var(--line);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--line);
+  background: var(--line-strong);
 }
 
 ::selection {
@@ -86,7 +87,7 @@ a {
   color: var(--tx);
 }
 
-/* app shell */
+/* ---- app shell ---- */
 .shell {
   display: flex;
   height: 100vh;
@@ -106,6 +107,7 @@ a {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  background: var(--bg);
 }
 
 /* routed pages */
@@ -120,7 +122,7 @@ a {
 @keyframes page-in {
   from {
     opacity: 0;
-    transform: translateY(2px);
+    transform: translateY(3px);
   }
   to {
     opacity: 1;
@@ -128,11 +130,39 @@ a {
   }
 }
 
-/* tiny shared helper labels */
-.caption {
+/* ---- editorial primitives ---- */
+
+/* Eyebrow: small tracked uppercase label, architectural "drafting notation" */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
   font-size: var(--fs-micro);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--tx4);
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* construction tick before an eyebrow (drafting annotation) */
+.eyebrow--noted::before {
+  content: "";
+  width: 14px;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+/* legacy caption alias kept for compatibility */
+.caption {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.1em;
   color: var(--tx3);
   text-transform: uppercase;
   user-select: none;

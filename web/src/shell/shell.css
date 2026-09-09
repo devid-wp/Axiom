@@ -1,22 +1,46 @@
 /* Persistent chrome: activity rail, titlebar, statusbar. */
 
+/* ================= ACTIVITY RAIL ================= */
 .activity {
   display: flex;
   flex-direction: column;
   width: var(--activity-w);
-  background: var(--bg);
+  background: var(--surface);
   border-right: 1px solid var(--line-soft);
-  padding: 4px 0;
+  padding: var(--sp-2) 0;
   flex-shrink: 0;
+  align-items: stretch;
 }
 
 .activity__logo {
-  display: grid;
-  place-items: center;
-  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  flex-shrink: 0;
+}
+
+.activity__logo-mark {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.5px;
   color: var(--accent-tx);
+}
+
+.activity__divider {
+  height: 1px;
+  background: var(--line-soft);
+  margin: 6px 8px;
+  flex-shrink: 0;
+}
+
+.activity__label {
+  padding: 2px 0 4px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.12em;
+  color: var(--tx4);
   flex-shrink: 0;
 }
 
@@ -24,41 +48,62 @@
   flex: 1;
 }
 
+.activity__lang {
+  height: 30px;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.06em;
+  color: var(--tx3);
+  transition: color var(--t-fast), background var(--t-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.activity__lang:hover {
+  color: var(--tx);
+  background: var(--h-soft);
+}
+
+/* ================= TITLE BAR ================= */
 .titlebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: var(--titlebar-h);
-  padding: 0 8px 0 10px;
-  background: var(--bg);
+  padding: 0 var(--sp-3) 0 var(--sp-4);
+  background: var(--surface);
   border-bottom: 1px solid var(--line-soft);
   flex-shrink: 0;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .titlebar__left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-3);
   min-width: 0;
 }
 
 .title__logo {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 2px;
   color: var(--tx);
   white-space: nowrap;
 }
+.title__logo .title__logo-mark {
+  color: var(--accent-tx);
+}
 .title__divider {
   width: 1px;
-  height: 14px;
-  background: var(--line);
+  height: 16px;
+  background: var(--line-strong);
 }
+
 .title__doc {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   min-width: 0;
 }
 
@@ -71,7 +116,7 @@
 }
 .title__project {
   font-size: var(--fs-ctl);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--tx);
   max-width: 220px;
   overflow: hidden;
@@ -86,10 +131,10 @@
 .title__new {
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: var(--r-sm);
-  color: var(--tx2);
+  color: var(--tx3);
   transition: background var(--t-fast), color var(--t-fast);
 }
 .title__new:hover {
@@ -98,32 +143,34 @@
 }
 .title__section {
   font-size: var(--fs-meta);
-  font-weight: 700;
-  letter-spacing: 1.2px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 1.4px;
   color: var(--tx3);
+  text-transform: uppercase;
 }
 
 .titlebar__actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
   flex-shrink: 0;
 }
 .titlebar__group-gap {
-  width: 6px;
+  width: 8px;
 }
 
+/* ================= STATUS BAR ================= */
 .status {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
   height: var(--statusbar-h);
-  padding: 0 10px;
-  background: var(--bg);
+  padding: 0 var(--sp-3);
+  background: var(--surface);
   border-top: 1px solid var(--line-soft);
   flex-shrink: 0;
   font-size: var(--fs-micro);
-  color: var(--tx2);
+  color: var(--tx3);
 }
 .status__dot {
   width: 6px;
@@ -138,21 +185,23 @@
   background: var(--accent);
 }
 .status__dot--idle {
-  background: var(--tx3);
+  background: var(--tx4);
 }
 .status__view {
   color: var(--tx2);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
   white-space: nowrap;
 }
 .status__spacer {
   flex: 1;
 }
 .status__cell {
-  color: var(--tx2);
+  color: var(--tx3);
   white-space: nowrap;
 }
 .status__saved {
-  color: var(--tx2);
+  color: var(--tx3);
   white-space: nowrap;
 }
 .status__lang {

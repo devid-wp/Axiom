@@ -19,21 +19,23 @@ export function TitleBar() {
   return (
     <header className="titlebar">
       <div className="titlebar__left">
-        <span className="title__logo">AXIOM</span>
+        <span className="title__logo">
+          AXI<span className="title__logo-mark">OM</span>
+        </span>
         <span className="title__divider" />
         {view === "studio" && (
           <span className="title__doc">
             <span className="title__dot" />
             <span className="title__project">{projectName}</span>
-            <span className="title__meta">— sheet A-101</span>
+            <span className="title__meta mono">sheet A-101</span>
             <button className="title__new" onClick={newProject} title="New project">
               <Plus size={13} />
             </button>
           </span>
         )}
-        {view === "start" && <span className="title__section">START</span>}
-        {view === "study" && <span className="title__section">STUDY — workspace</span>}
-        {view === "explore" && <span className="title__section">EXPLORE — index</span>}
+        {view === "start" && <span className="title__section">Start</span>}
+        {view === "study" && <span className="title__section">Study — Learning Workspace</span>}
+        {view === "explore" && <span className="title__section">Explore — Knowledge Index</span>}
       </div>
 
       <div className="titlebar__actions">

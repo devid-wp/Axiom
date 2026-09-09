@@ -1,0 +1,116 @@
+import { HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { Theme } from "../theme/colors.slint";
+import { Type } from "../theme/typography.slint";
+
+// Collapsible property group: header row toggles body.
+export component PropGroup inherits VerticalBox {
+    in property <string> title;
+    in-out property <bool> open: true;
+    callback toggled(bool);
+    spacing: 0;
+    Rectangle {
+        height: 24px;
+        background: head.has-hover ? #FFFFFF06 : transparent;
+        animate background { duration: 120ms; }
+        HorizontalBox {
+            padding-left: 8px; padding-right: 8px; spacing: 6px;
+            Text { text: open ? "▾" : "▸"; font-size: 9px; color: Theme.tx3; vertical-alignment: center; width: 10px; }
+            Text { text: root.title; font-size: Type.micro; font-weight: 700; color: Theme.tx3; vertical-alignment: center; }
+        }
+        head := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.open = !root.open; root.toggled(root.open); } }
+    }
+    VerticalBox {
+        spacing: 1px;
+        visible: root.open;
+        @children
+    }
+}
+
+// Label left, mono value right. Single 24px property line.
+export component PropRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    height: 24px;
+    HorizontalBox {
+        padding-left: 8px; padding-right: 8px; spacing: 8px;
+        Text { text: root.label; font-size: Type.ctl; color: Theme.tx2; vertical-alignment: center; }
+        Rectangle {}
+        Text { text: root.value; font-size: Type.ctl; font-family: Type.mono; color: Theme.tx; vertical-alignment: center; }
+    }
+}
+
+// Numeric edit line: label + value + steppers.
+export component NumEdit inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    callback dec();
+    callback inc();
+    height: 26px;
+    HorizontalBox {
+        padding-left: 8px; padding-right: 4px; spacing: 6px;
+        Text { text: root.label; font-size: Type.ctl; color: Theme.tx2; vertical-alignment: center; }
+        Rectangle {}
+        Text { text: root.value; font-size: Type.ctl; font-family: Type.mono; color: Theme.tx; vertical-alignment: center; }
+        Rectangle {
+            width: 22px; height: 20px; border-radius: 3px;
+            background: dec-t.pressed ? #FFFFFF12 : (dec-t.has-hover ? #FFFFFF0C : #FFFFFF06);
+            Text { text: "−"; font-size: 12px; color: Theme.tx2; horizontal-alignment: center; vertical-alignment: center; }
+            dec-t := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.dec(); } }
+        }
+        Rectangle {
+            width: 22px; height: 20px; border-radius: 3px;
+            background: inc-t.pressed ? #FFFFFF12 : (inc-t.has-hover ? #FFFFFF0C : #FFFFFF06);
+            Text { text: "+"; font-size: 12px; color: Theme.tx2; horizontal-alignment: center; vertical-alignment: center; }
+            inc-t := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.inc(); } }
+        }
+    }
+}
+
+// Material option: swatch + name + radio state.
+export component SwatchRow inherits Rectangle {
+    in property <string> label;
+    in property <color> swatch;
+    in property <bool> active;
+    callback clicked();
+    height: 26px;
+    border-radius: 3px;
+    background: active ? Theme.accent-wash : (touch.pressed ? #FFFFFF0B : (touch.has-hover ? #FFFFFF06 : transparent));
+    animate background { duration: 120ms; }
+    HorizontalBox {
+        padding-left: 8px; padding-right: 8px; spacing: 8px;
+        Rectangle { width: 12px; height: 12px; border-radius: 2px; background: root.swatch; border-width: 1px; border-color: #FFFFFF26; }
+        Text { text: root.label; font-size: Type.ctl; color: active ? Theme.tx : Theme.tx2; vertical-alignment: center; }
+        Rectangle {}
+        Rectangle {
+            width: 10px; height: 10px; border-radius: 5px;
+            border-width: 1px; border-color: active ? Theme.accent : Theme.line;
+            background: active ? Theme.accent : transparent;
+        }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// Layer tree row: status dot + name + kind + selected marker.
+export component TreeRow inherits Rectangle {
+    in property <string> name;
+    in property <string> kind;
+    in property <color> dot;
+    in property <bool> selected;
+    callback clicked();
+    height: 26px;
+    border-radius: 3px;
+    background: selected ? Theme.accent-wash : (touch.pressed ? #FFFFFF0B : (touch.has-hover ? #FFFFFF06 : transparent));
+    animate background { duration: 120ms; }
+    HorizontalBox {
+        padding-left: 8px; padding-right: 8px; spacing: 8px;
+        Rectangle { width: 8px; height: 8px; border-radius: 2px; background: root.dot; }
+        Text { text: root.name; font-size: Type.ctl; color: selected ? Theme.tx : Theme.tx2; vertical-alignment: center; }
+        Rectangle {}
+        Text { text: root.kind; font-size: Type.micro; font-family: Type.mono; color: Theme.tx3; vertical-alignment: center; }
+        Rectangle {
+            width: 5px; height: 5px; border-radius: 3px;
+            background: selected ? Theme.accent : transparent;
+        }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}

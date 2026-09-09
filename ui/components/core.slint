@@ -1,0 +1,128 @@
+import { HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { Theme } from "../theme/colors.slint";
+import { Type } from "../theme/typography.slint";
+import { Metrics } from "../theme/metrics.slint";
+
+// Activity-bar item: 40px icon cell, 2px active edge, no labels.
+export component RailBtn inherits Rectangle {
+    in property <string> icon;
+    in property <bool> active;
+    callback clicked();
+    height: Metrics.rail-item;
+    background: active ? Theme.accent-wash : (touch.pressed ? #FFFFFF0C : (touch.has-hover ? #FFFFFF07 : transparent));
+    animate background { duration: 120ms; }
+    Rectangle {
+        x: 0px; y: 9px; width: 2px; height: 22px;
+        background: Theme.accent;
+        opacity: active ? 1 : 0;
+        animate opacity { duration: 120ms; }
+    }
+    Text {
+        text: root.icon; font-size: 15px;
+        color: active ? Theme.tx : Theme.tx3;
+        horizontal-alignment: center; vertical-alignment: center;
+        animate color { duration: 120ms; }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// Titlebar / toolbar text button. kind: "primary" | "plain" | "danger".
+export component BarBtn inherits Rectangle {
+    in property <string> text;
+    in property <string> kind: "plain";
+    in property <bool> enabled: true;
+    callback clicked();
+    property <bool> primary: root.kind == "primary";
+    property <bool> danger: root.kind == "danger";
+    height: 24px;
+    border-radius: Metrics.r-sm;
+    border-width: 1px;
+    border-color: primary ? transparent : (danger ? #E5484D40 : Theme.line);
+    background: !enabled ? transparent : (
+        primary ? (touch.pressed ? Theme.accent-lo : (touch.has-hover ? Theme.accent-hi : Theme.accent)) : (
+        danger ? (touch.pressed ? #E5484D30 : (touch.has-hover ? #E5484D22 : Theme.danger-wash)) : (
+            touch.pressed ? #FFFFFF10 : (touch.has-hover ? #FFFFFF0B : transparent))));
+    opacity: enabled ? 1 : 0.35;
+    animate background, opacity { duration: 120ms; }
+    HorizontalBox {
+        padding-left: 8px; padding-right: 8px;
+        Text {
+            text: root.text; font-size: Type.ctl; font-weight: 600;
+            color: !root.enabled ? Theme.tx3 : (primary ? white : (danger ? #FF9B9B : Theme.tx2));
+            vertical-alignment: center;
+        }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+// Dock tool row: icon + label + key hint. Compact list, not buttons.
+export component ToolRow inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <string> key;
+    in property <bool> active;
+    callback clicked();
+    height: 28px;
+    border-radius: Metrics.r-sm;
+    background: active ? Theme.accent-wash : (touch.pressed ? #FFFFFF0B : (touch.has-hover ? #FFFFFF06 : transparent));
+    animate background { duration: 120ms; }
+    Rectangle {
+        x: 0px; y: 6px; width: 2px; height: 16px;
+        background: Theme.accent;
+        opacity: active ? 1 : 0;
+        animate opacity { duration: 120ms; }
+    }
+    HorizontalBox {
+        padding-left: 8px; padding-right: 8px; spacing: 8px;
+        Text { text: root.icon; font-size: 12px; color: active ? Theme.tx : Theme.tx3; vertical-alignment: center; width: 14px; }
+        Text {
+            text: root.label; font-size: Type.ctl;
+            color: active ? Theme.tx : Theme.tx2;
+            vertical-alignment: center;
+            animate color { duration: 120ms; }
+        }
+        Rectangle {}
+        Text { text: root.key; font-size: Type.micro; font-family: Type.mono; color: Theme.tx3; vertical-alignment: center; }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// Segmented tab (inspector tabs, explore filters).
+export component SegTab inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    height: 24px;
+    background: touch.pressed ? #FFFFFF0C : (touch.has-hover ? #FFFFFF07 : transparent);
+    animate background { duration: 120ms; }
+    VerticalBox {
+        padding: 0; spacing: 0;
+        HorizontalBox {
+            padding-left: 8px; padding-right: 8px;
+            Text {
+                text: root.text; font-size: Type.ctl; font-weight: 600;
+                color: active ? Theme.tx : Theme.tx3;
+                vertical-alignment: center;
+                animate color { duration: 120ms; }
+            }
+        }
+        Rectangle { height: 2px; background: active ? Theme.accent : transparent; }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// Status-bar segment. mono=true for coordinates/technical values.
+export component StatusCell inherits Text {
+    in property <bool> mono;
+    font-size: Type.micro;
+    font-family: mono ? Type.mono : "";
+    color: Theme.tx2;
+    vertical-alignment: center;
+}
+
+// Group caption: 10px uppercase technical label.
+export component Caption inherits Text {
+    font-size: Type.micro;
+    font-weight: 700;
+    color: Theme.tx3;
+}

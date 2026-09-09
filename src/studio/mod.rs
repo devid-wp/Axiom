@@ -23,7 +23,7 @@ impl Material {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Element {
     pub id: String,
     pub kind: ElementKind,
@@ -94,4 +94,18 @@ pub fn save_projects(projects: &[Project]) {
     if let Ok(s) = serde_json::to_string_pretty(projects) {
         let _ = fs::write(p, s);
     }
+}
+
+pub fn export_copy(projects: &[Project]) -> String {
+    let dest = if let Some(dirs) = dirs::data_dir() {
+        let d = dirs.join("axiom");
+        let _ = fs::create_dir_all(&d);
+        d.join("axiom-export.json")
+    } else {
+        PathBuf::from("axiom-export.json")
+    };
+    if let Ok(s) = serde_json::to_string_pretty(projects) {
+        let _ = fs::write(&dest, s);
+    }
+    dest.to_string_lossy().to_string()
 }

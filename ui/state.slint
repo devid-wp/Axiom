@@ -1,0 +1,91 @@
+// AXIOM — shared application state. Single source of truth.
+// Property / callback names are part of the Rust API — do not rename.
+
+export struct StudioElement {
+    id: string,
+    kind: string,
+    name: string,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    material: string,
+    selected: bool,
+}
+
+export struct LessonData {
+    id: string,
+    title: string,
+    duration: string,
+    level: string,
+    body1: string,
+    body2: string,
+    quiz-q: string,
+    opt-a: string,
+    opt-b: string,
+    correct: int,
+}
+
+export struct CourseData {
+    id: string,
+    title: string,
+    meta: string,
+    level: string,
+    accent: string,
+    lessons: [LessonData],
+}
+
+export global AppState {
+    in-out property <string> view: "studio";
+    in-out property <string> lang: "en";
+    in-out property <string> studio-tool: "select";
+    in-out property <string> studio-selected: "";
+    in-out property <string> project-name: "Pavilion 01";
+    in-out property <[StudioElement]> elements;
+    in-out property <string> sel-kind: "";
+    in-out property <string> sel-name: "";
+    in-out property <string> sel-material: "";
+    in-out property <string> sel-x: "—";
+    in-out property <string> sel-y: "—";
+    in-out property <string> sel-z: "0.00m";
+    in-out property <string> sel-l: "—";
+    in-out property <string> sel-h: "—";
+    in-out property <string> sel-t: "—";
+    in-out property <string> cursor-label: "X — · Y —";
+    in-out property <string> zoom-label: "100%";
+    in-out property <string> saved-label: "Saved";
+    in-out property <bool> undo-enabled: false;
+    in-out property <bool> redo-enabled: false;
+    in-out property <[CourseData]> courses;
+    in-out property <int> study-course: 0;
+    in-out property <int> study-lesson: 0;
+    in-out property <int> study-picked: -1;
+    in-out property <int> study-done-count: 0;
+    in-out property <int> study-total-count: 14;
+    in-out property <string> study-pct: "0%";
+    callback request-select(string);
+    callback request-move(string, length, length);
+    callback request-press-move(string, length, length);
+    callback request-drag-move(string, length, length);
+    callback request-press-size(string, length, length);
+    callback request-drag-size(string, length, length);
+    callback request-release();
+    callback request-nudge(string, length, length);
+    callback request-resize(string, length, length);
+    callback request-size-step(string, length, length);
+    callback request-material(string, string);
+    callback request-delete(string);
+    callback request-duplicate(string);
+    callback request-canvas-click(length, length);
+    callback request-hover(length, length);
+    callback request-deselect();
+    callback request-save();
+    callback request-undo();
+    callback request-redo();
+    callback request-export();
+    callback request-new-project();
+    callback request-set-course(int);
+    callback request-set-lesson(int);
+    callback request-quiz-answer(int);
+    callback request-practice();
+}

@@ -1,0 +1,89 @@
+import { HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { Theme } from "../theme/colors.slint";
+import { Type } from "../theme/typography.slint";
+import { AppState } from "../state.slint";
+import { SegTab, Caption } from "../components/core.slint";
+
+// EXPLORE v2 — filterable topic index. Dense rows, category tabs, no cards.
+
+component IndexRow inherits Rectangle {
+    in property <string> idx;
+    in property <string> title;
+    in property <string> desc;
+    in property <string> time;
+    in property <string> level;
+    callback clicked();
+    height: 34px;
+    border-radius: 3px;
+    background: touch.pressed ? #FFFFFF0B : (touch.has-hover ? #FFFFFF06 : transparent);
+    animate background { duration: 120ms; }
+    HorizontalBox {
+        padding-left: 10px; padding-right: 10px; spacing: 12px;
+        Text { text: root.idx; font-size: Type.meta; font-family: Type.mono; color: Theme.tx3; vertical-alignment: center; width: 20px; }
+        VerticalBox {
+            spacing: 0;
+            Text { text: root.title; font-size: Type.ui; font-weight: 600; color: Theme.tx; }
+            Text { text: root.desc; font-size: Type.meta; color: Theme.tx2; }
+        }
+        Rectangle {}
+        Text { text: root.time; font-size: Type.meta; font-family: Type.mono; color: Theme.tx3; vertical-alignment: center; }
+        Text { text: root.level; font-size: Type.meta; font-family: Type.mono; color: Theme.tx3; vertical-alignment: center; width: 78px; }
+        Text { text: "→"; font-size: Type.ctl; color: Theme.tx3; vertical-alignment: center; }
+    }
+    touch := TouchArea { width: 100%; height: 100%; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export component ExploreScreen inherits Rectangle {
+    background: Theme.bg;
+    property <string> cat: "all";
+    property <bool> shown: false;
+    opacity: shown ? 1 : 0;
+    animate opacity { duration: 140ms; }
+    Timer { interval: 30ms; running: !root.shown; triggered => { root.shown = true; } }
+
+    HorizontalBox {
+        padding: 0; spacing: 0;
+        Rectangle { width: 220px; }
+        VerticalBox {
+            width: 640px;
+            padding-top: 32px; spacing: 0;
+            alignment: start;
+            Caption { text: "INDEX — 9 ENTRIES"; }
+            Rectangle { height: 6px; }
+            HorizontalBox {
+                spacing: 2px;
+                SegTab { text: "All"; active: cat == "all"; clicked => { cat = "all"; } }
+                SegTab { text: "Styles"; active: cat == "styles"; clicked => { cat = "styles"; } }
+                SegTab { text: "Structures"; active: cat == "structures"; clicked => { cat = "structures"; } }
+                SegTab { text: "Materials"; active: cat == "materials"; clicked => { cat = "materials"; } }
+                SegTab { text: "Engineering"; active: cat == "engineering"; clicked => { cat = "engineering"; } }
+            }
+            Rectangle { height: 1px; background: Theme.line-soft; }
+            Rectangle { height: 6px; }
+            if (cat == "all" || cat == "styles"): VerticalBox {
+                spacing: 0;
+                IndexRow { idx: "01"; title: "Gothic — Light as Structure"; desc: "Pointed arches, ribbed vaults."; time: "6 min"; level: "beginner"; clicked => { AppState.view = "study"; } }
+                IndexRow { idx: "02"; title: "Brutalism — Truth of Material"; desc: "Raw concrete, mass and shadow."; time: "5 min"; level: "beginner"; clicked => { AppState.view = "study"; } }
+            }
+            if (cat == "all" || cat == "structures"): VerticalBox {
+                spacing: 0;
+                IndexRow { idx: "03"; title: "Trusses — Triangles that Span"; desc: "Triangles are rigid."; time: "8 min"; level: "beginner"; clicked => { AppState.view = "study"; } }
+                IndexRow { idx: "04"; title: "Arches & Vaults"; desc: "Compression-only forms."; time: "6 min"; level: "beginner"; clicked => { AppState.view = "study"; } }
+            }
+            if (cat == "all" || cat == "materials"): VerticalBox {
+                spacing: 0;
+                IndexRow { idx: "05"; title: "Concrete — Liquid Stone"; desc: "Aggregate, cement, water."; time: "7 min"; level: "beginner"; clicked => { AppState.view = "study"; } }
+                IndexRow { idx: "06"; title: "Steel — Tensile Grace"; desc: "Ductility, yield."; time: "5 min"; level: "intermed."; clicked => { AppState.view = "study"; } }
+                IndexRow { idx: "07"; title: "Timber — Warmth"; desc: "Grain, moisture."; time: "6 min"; level: "beginner"; clicked => { AppState.view = "study"; } }
+            }
+            if (cat == "all" || cat == "engineering"): VerticalBox {
+                spacing: 0;
+                IndexRow { idx: "08"; title: "Loads & Equilibrium"; desc: "Dead, live, wind."; time: "8 min"; level: "beginner"; clicked => { AppState.view = "study"; } }
+                IndexRow { idx: "09"; title: "Beams — Bending"; desc: "Moment, shear."; time: "9 min"; level: "intermed."; clicked => { AppState.view = "study"; } }
+            }
+            Rectangle {}
+            Text { text: "rows open the study workspace"; font-size: Type.meta; font-family: Type.mono; color: Theme.tx3; }
+        }
+        Rectangle {}
+    }
+}

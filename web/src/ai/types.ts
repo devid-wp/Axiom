@@ -152,7 +152,12 @@ export interface TutorResult {
 export interface TutorProvider {
   name: string;
   chat(req: TutorRequest): Promise<TutorResult>;
+  chatStream?(req: TutorRequest): AsyncGenerator<TutorChunk>;
 }
+
+export type TutorChunk =
+  | { type: "text"; delta: string }
+  | { type: "done" };
 
 /** Raised when the provider is not configured/reachable (falls back to Mock). */
 export class TutorUnavailableError extends Error {
@@ -185,6 +190,15 @@ export interface StudioElementBrief {
   material: Material;
 }
 
+export interface QuizState {
+  /** The last quiz shown to the student in this session */
+  active: boolean;
+  /** Index of the option the student picked (-1 if none yet) */
+  picked: number;
+  /** Number of attempts in this quiz exchange */
+  attempts: number;
+}
+
 export interface StudyContext {
   scope: "study";
   lang: Lang;
@@ -197,6 +211,10 @@ export interface StudyContext {
   duration: string;
   body: string[];
   quiz?: { q: string; opts: string[]; correct: number };
+  /** Tracks whether the student is currently answering a quiz in the chat */
+  quizState?: QuizState;
+  /** How deep the student wants the explanation: "simple" | "standard" | "deep" */
+  depthHint?: "simple" | "standard" | "deep";
   lessonCompleted: boolean;
   done: number;
   total: number;

@@ -8,6 +8,7 @@ import { studySuggestions, studioSuggestions, type Suggestion } from "@/ai/sugge
 import { buildStudioContext, buildStudyContext } from "@/ai/prompts";
 import { STR } from "@/i18n";
 import { Caption } from "@/components/Caption";
+import { Sparkles, ArrowUp, RotateCcw } from "lucide-react";
 import "./ai.css";
 
 export interface AiChatProps {
@@ -52,12 +53,13 @@ export function AiChat({ scope, onClose }: AiChatProps) {
   );
 
   const thinking = session.status === "thinking";
+  const streaming = session.status === "streaming";
   const modeLabel = mode === "live" ? s.aiLive : mode === "mock" ? s.aiOffline : "";
 
   useEffect(() => {
     const el = msgsRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [session.messages.length, thinking, session.pending]);
+  }, [session.messages.length, thinking, streaming, session.pending]);
 
   const submit = (text: string) => {
     const q = text.trim();
@@ -98,7 +100,7 @@ export function AiChat({ scope, onClose }: AiChatProps) {
         </span>
         <span className="ai__spacer" />
         {session.messages.length > 0 && (
-          <button className="ai__clear mono" onClick={() => clear(scope)}>
+          <button className="ai__clear mono" onClick={() => clear(scope)} title={s.aiClear}>
             {s.aiClear}
           </button>
         )}
@@ -127,7 +129,7 @@ export function AiChat({ scope, onClose }: AiChatProps) {
       )}
 
       <div className="ai__suggest">
-        <Caption text={s.aiSuggs} />
+        <span className="eyebrow">{s.aiSuggs}</span>
         <div className="ai__chips">
           {suggestions.slice(0, 5).map((sg, i) => (
             <button key={i} className="ai__chip mono" onClick={() => submit(sg.question)}>
@@ -153,7 +155,10 @@ export function AiChat({ scope, onClose }: AiChatProps) {
           </div>
         )}
         {session.messages.map((m, i) => (
-          <div key={i} className={`ai__msg ai__msg--${m.role}`}>
+          <div
+            key={i}
+            className={`ai__msg ai__msg--${m.role}${streaming && i === session.messages.length - 1 ? "" : " ai__msg--done"}`}
+          >
             {m.content.split("\n").map((line, j) => (
               <p key={j}>{line || "\u00A0"}</p>
             ))}
@@ -224,6 +229,16 @@ export function AiChat({ scope, onClose }: AiChatProps) {
             {s.aiThinking}…
           </div>
         )}
+        {streaming && (
+          <div className="ai__thinking ai__thinking--stream">
+            <span className="ai__dots">
+              <i />
+              <i />
+              <i />
+            </span>
+            {s.aiThinking}…
+          </div>
+        )}
         {session.status === "error" && (
           <div className="ai__error">
             {s.aiError}
@@ -255,8 +270,13 @@ export function AiChat({ scope, onClose }: AiChatProps) {
             }
           }}
         />
-        <button className="ai__send" type="submit" disabled={thinking || !input.trim()}>
-          {"\u2192"}
+        <button
+          className="ai__send"
+          type="submit"
+          disabled={thinking || !input.trim()}
+          aria-label={s.aiSend}
+        >
+          <ArrowUp size={14} />
         </button>
       </form>
     </div>

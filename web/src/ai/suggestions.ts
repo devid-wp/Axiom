@@ -88,8 +88,14 @@ export function studySuggestions(lang: Lang): Suggestion[] {
     { label: S.explain[lang], question: S.explain[lang] },
     { label: S.example[lang], question: S.example[lang] },
     ...(lang === "en"
-      ? [{ label: "Explain columns simply", question: "Explain columns simply." }]
-      : [{ label: "Подробно о колоннах", question: "Объясни колонны простыми словами." }]),
+      ? [
+          { label: "Explain simply", question: "Explain this in simple words." },
+          { label: "Go deeper", question: "Tell me more about this in detail." },
+        ]
+      : [
+          { label: "Простыми словами", question: "Объясни это простыми словами." },
+          { label: "Подробнее", question: "Расскажи об этом подробно." },
+        ]),
     { label: S.quiz[lang], question: S.quiz[lang] },
     ...(lang === "en"
       ? [{ label: "Give me an exercise", question: "Give me a small exercise." }]

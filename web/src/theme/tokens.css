@@ -1,19 +1,38 @@
-/* AXIOM — layout + motion tokens. Tight editor spacing. */
+/* AXIOM — layout + motion tokens.
+   Architectural spacing: 4px grid, measured proportions. */
 
 :root {
   /* chrome metrics */
-  --activity-w: 48px;
-  --titlebar-h: 34px;
-  --statusbar-h: 24px;
-  --dock-w: 204px;
-  --inspector-w: 264px;
-  --ai-drawer-w: 320px;
-  --ctl-h: 26px;
-  --rail-item-h: 40px;
+  --activity-w: 52px;
+  --titlebar-h: 38px;
+  --statusbar-h: 26px;
+  --dock-w: 220px;
+  --inspector-w: 272px;
+  --ai-drawer-w: 340px;
 
-  /* radii — small by design */
-  --r-sm: 3px;
-  --r-md: 4px;
+  /* component heights */
+  --ctl-h: 28px;
+  --rail-item-h: 42px;
+  --row-h: 36px;
+  --row-h-sm: 30px;
+
+  /* spacing scale (4px base) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* radii */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
 
   /* studio sheet */
   --sheet-w: 900px;
@@ -22,8 +41,9 @@
   --snap: 8px;
 
   /* motion */
-  --t-fast: 120ms;
-  --t-page: 140ms;
+  --t-fast: 100ms;
+  --t-mid: 160ms;
+  --t-page: 180ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
 
@@ -34,10 +54,19 @@
   --z-titlebar: 40;
   --z-popover: 50;
   --z-toast: 60;
+  --z-overlay: 70;
 }
 
 @media (min-width: 1600px) {
   :root {
-    --ai-drawer-w: 360px;
+    --ai-drawer-w: 380px;
+    --dock-w: 232px;
+    --inspector-w: 288px;
+  }
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --ai-drawer-w: 420px;
   }
 }

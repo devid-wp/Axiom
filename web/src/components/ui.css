@@ -1,38 +1,50 @@
 /* Core chrome primitives: buttons, tool rows, rail buttons, seg tabs. */
 
+/* ============ BUTTONS ============ */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 8px;
+  gap: 7px;
+  height: 34px;
+  padding: 0 var(--sp-4);
   border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: transparent;
   color: var(--tx2);
   font-size: var(--fs-ctl);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.01em;
   white-space: nowrap;
-  transition: background var(--t-fast), color var(--t-fast), opacity var(--t-fast), border-color var(--t-fast);
+  transition: background var(--t-fast), color var(--t-fast), opacity var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
 }
 .btn:hover:not(:disabled) {
   background: var(--h-mid);
+  border-color: var(--line-strong);
+  color: var(--tx);
 }
 .btn:active:not(:disabled) {
   background: var(--h-press);
 }
+.btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-line);
+}
+
 .btn--primary {
   background: var(--accent);
   border-color: transparent;
-  color: #ffffff;
+  color: #fff;
 }
 .btn--primary:hover:not(:disabled) {
   background: var(--accent-hi);
+  color: #fff;
 }
 .btn--primary:active:not(:disabled) {
   background: var(--accent-lo);
 }
+
 .btn--danger {
   background: var(--danger-wash);
   border-color: var(--danger-line);
@@ -41,20 +53,21 @@
 .btn--danger:hover:not(:disabled) {
   background: rgba(229, 72, 77, 0.14);
 }
+
 .btn--disabled {
   opacity: 0.35;
   pointer-events: none;
 }
 
-/* dock tool row */
+/* ============ TOOL ROW (studio dock) ============ */
 .tool-row {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-3);
   width: 100%;
-  height: 28px;
-  padding: 0 8px;
+  height: 34px;
+  padding: 0 var(--sp-2) 0 var(--sp-3);
   border-radius: var(--r-sm);
   background: transparent;
   transition: background var(--t-fast);
@@ -66,8 +79,13 @@
 .tool-row:active {
   background: var(--h-press);
 }
+.tool-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 .tool-row--active {
-  background: var(--accent-wash);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .tool-row__edge {
   position: absolute;
@@ -84,18 +102,20 @@
   opacity: 1;
 }
 .tool-row__icon {
-  width: 14px;
-  font-size: 12px;
+  width: 18px;
+  font-size: 14px;
   color: var(--tx3);
   text-align: center;
   transition: color var(--t-fast);
+  flex-shrink: 0;
 }
 .tool-row--active .tool-row__icon {
-  color: var(--tx);
+  color: var(--accent-tx);
 }
 .tool-row__label {
   flex: 1;
   font-size: var(--fs-ctl);
+  font-weight: var(--fw-medium);
   color: var(--tx2);
   transition: color var(--t-fast);
 }
@@ -105,28 +125,35 @@
 .tool-row__key {
   font-size: var(--fs-micro);
   font-family: var(--font-mono);
-  color: var(--tx3);
+  color: var(--tx4);
 }
 
-/* activity rail item */
+/* ============ ACTIVITY RAIL ITEM ============ */
 .rail-btn {
   position: relative;
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: var(--rail-item-h);
-  transition: background var(--t-fast);
-  color: var(--tx3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  margin: 2px 8px;
+  border-radius: var(--r-md);
+  transition: background var(--t-fast), color var(--t-fast);
+  color: var(--tx4);
 }
 .rail-btn:hover {
-  background: var(--h-strong);
+  background: var(--h-soft);
+  color: var(--tx2);
 }
 .rail-btn:active {
   background: var(--h-press);
 }
+.rail-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-line) inset;
+}
 .rail-btn__edge {
   position: absolute;
-  left: 0;
+  left: -8px;
   top: 9px;
   bottom: 9px;
   width: 2px;
@@ -140,42 +167,50 @@
 }
 .rail-btn--active {
   background: var(--accent-wash);
+  color: var(--accent-tx);
+}
+.rail-btn--active:hover {
+  color: var(--accent-tx);
 }
 .rail-btn__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
   transition: color var(--t-fast);
 }
 .rail-btn--active .rail-btn__icon {
-  color: var(--tx);
+  color: var(--accent-tx);
 }
 
-/* segmented tab */
+/* ============ SEGMENTED TAB ============ */
 .seg-tab {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  height: 24px;
+  height: 28px;
   padding: 0;
+  border-radius: var(--r-sm);
   transition: background var(--t-fast);
 }
 .seg-tab:hover {
-  background: var(--h-strong);
+  background: var(--h-soft);
 }
 .seg-tab:active {
   background: var(--h-press);
+}
+.seg-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-line);
 }
 .seg-tab__label {
   display: flex;
   align-items: center;
   justify-content: center;
   flex: 1;
-  padding: 0 8px;
+  padding: 0 var(--sp-3);
   font-size: var(--fs-ctl);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
   color: var(--tx3);
   transition: color var(--t-fast);
 }
@@ -185,6 +220,7 @@
 .seg-tab__bar {
   height: 2px;
   background: transparent;
+  border-radius: 1px;
   transition: background var(--t-fast);
 }
 .seg-tab--active .seg-tab__bar {

@@ -1,17 +1,34 @@
-/* AXIOM — compact desktop-tool typography. Mono for technical values. */
+/* AXIOM — typography.
+   Editorial hierarchy: display → title → section → body → meta → micro.
+   Mono for technical/drafting values. */
 
 :root {
   --font-body: "Instrument Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-display: "Instrument Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
 
-  --fs-major: 18px;
-  --fs-title: 14px;
-  --fs-ui: 12px;
-  --fs-ctl: 12px;
-  --fs-meta: 11px;
-  --fs-micro: 10px;
+  /* display */
+  --fs-hero: 30px;
+  --fs-display: 24px;
+  --fs-title: 20px;
 
-  --track-wide: 0.12em;
+  /* body */
+  --fs-body: 15px;
+  --fs-ui: 14px;
+  --fs-ctl: 13px;
+
+  /* meta */
+  --fs-meta: 12px;
+  --fs-micro: 11px;
+
+  --track-wide: 0.14em;
+  --track-mid: 0.09em;
   --track-mono: 0;
+
+  /* weight scale */
+  --fw-light: 300;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
 }

@@ -5,7 +5,7 @@
    Structured actions are parsed/validated client-side by ai/actions.ts. */
 
 import type { Lang } from "@/store/ui";
-import type { AiAction, AiExercisePayload, TutorContext, TutorProvider, TutorRequest, TutorResult } from "./types";
+import type { AiAction, AiExercisePayload, TutorChunk, TutorContext, TutorProvider, TutorRequest, TutorResult } from "./types";
 import { TutorUnavailableError } from "./types";
 import { pickChallenge, challengePayload } from "./challenges";
 
@@ -35,6 +35,56 @@ export class HttpTutorProvider implements TutorProvider {
     return { reply: data.reply };
   }
 
+  async *chatStream(req: TutorRequest): AsyncGenerator<TutorChunk> {
+    let res: Response;
+    try {
+      res = await fetch("/api/ai/tutor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: req.messages, lang: req.lang, stream: true }),
+      });
+    } catch {
+      throw new TutorUnavailableError("network");
+    }
+    if (res.status === 503) throw new TutorUnavailableError("unconfigured");
+    if (!res.ok) throw new Error(`tutor http ${res.status}`);
+    if (!res.body) throw new Error("no response body");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6).trim();
+            if (data === "[DONE]") {
+              yield { type: "done" };
+              return;
+            }
+            try {
+              const parsed = JSON.parse(data) as { delta?: string };
+              if (parsed.delta) {
+                yield { type: "text", delta: parsed.delta };
+              }
+            } catch {
+              /* skip malformed chunks */
+            }
+          }
+        }
+      }
+      yield { type: "done" };
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
   async reachable(): Promise<boolean> {
     try {
       const res = await fetch(this.base);
@@ -56,7 +106,11 @@ export class MockTutorProvider implements TutorProvider {
 
   async chat(req: TutorRequest): Promise<TutorResult> {
     await delay(420);
-    const question = [...req.messages].reverse().find((m) => m.role === "user")?.content ?? "";
+    const userTurns = req.messages
+      .filter((m) => m.role === "user")
+      .map((m) => m.content.trim())
+      .filter(Boolean);
+    const question = userTurns[userTurns.length - 1] ?? "";
     const ctx = parseContext(req.messages);
     const lang = (ctx?.lang as Lang) ?? req.lang;
 
@@ -78,7 +132,17 @@ export class MockTutorProvider implements TutorProvider {
       };
     }
 
-    return tutorAnswer(ctx, question, lang);
+    return tutorAnswer(ctx, question, lang, userTurns);
+  }
+
+  async *chatStream(req: TutorRequest): AsyncGenerator<TutorChunk> {
+    const result = await this.chat(req);
+    const words = result.reply.split(/(\s+)/);
+    for (const word of words) {
+      await delay(15 + Math.random() * 25);
+      yield { type: "text", delta: word };
+    }
+    yield { type: "done" };
   }
 }
 
@@ -242,7 +306,150 @@ function ruMaterial(m: string): string {
   return m === "concrete" ? "бетона" : m === "brick" ? "кирпича" : m === "glass" ? "стекла" : m === "timber" ? "дерева" : "стали";
 }
 
-function tutorAnswer(ctx: TutorContext | null, question: string, lang: Lang): TutorReply {
+/* -------------------------------------------------------- consultation --- */
+/* A conversational design workflow: the mentor listens to the student's goal,
+   asks clarifying questions (material -> light/context) turn by turn, and
+   proposes a concrete build once intent is clear. Deterministic for the mock
+   provider; the live model does the same guided by the system prompt. */
+
+const MATERIAL_RE =
+  /concrete|бетон|reinforced|железобетон|timber|wood|дерево|деревян|glass|стекло|стеклян|steel|сталь|металл|brick|кирпич|камень|stone|clay|глина|bamboo|бамбук/;
+const LIGHT_RE =
+  /light|свет|sun|солнц|solar|south|юг|южн|north|север|east|восточ|west|запад|view|вид|garden|сад|green|зелен|tree|дерев|park|парк|terrace|террас|window|окно|окна|facade|фасад|air|воздух|nature|природ/;
+const UNSURE_RE = /не знаю|not sure|any|любой|всё равно|без разниц|no idea|don'?t know|как скаж|на ваш|реши за меня/;
+const OPEN_CREATIVE_RE =
+  /i want|i\'d like|i would like|хочу|хотел|мечтаю|не знаю что построить|что мне построить|придумай|идея|идеи|помоги с иде|что тут можно|открой апдейт подскажи что/;
+
+function detectProgram(all: string, lang: Lang): { key: string; en: string; ru: string } | null {
+  const hasQ = (re: RegExp) => re.test(all);
+  if (hasQ(/reading|cozy|nook|уютн|уголок|читальн|тих|отдых/))
+    return { key: "nook", en: "a cozy reading nook", ru: "уютный читальный уголок" };
+  if (hasQ(/pavilion|беседк|павильон|площадк|аттракцион/))
+    return { key: "pavilion", en: "a garden pavilion", ru: "садовый павильон" };
+  if (hasQ(/cafe|кафе|coffee|кофе|ресторан|lobby|вестибюл|зал/))
+    return { key: "hall", en: "a public hall / cafe space", ru: "общественный зал / кафе" };
+  if (hasQ(/house|дом(?!ик)|коттедж|жил|villa|вилл/))
+    return { key: "pavilion", en: "a small house", ru: "небольшой дом" };
+  if (hasQ(/workshop|мастерск|atelier|ателье|студи|lab|лабор/))
+    return { key: "hall", en: "a workshop / studio space", ru: "мастерская / студия" };
+  if (hasQ(/frame|рама|каркас|конструктив|structure|load path|путь нагруз/))
+    return { key: "frame", en: "a structural frame", ru: "конструктивный каркас" };
+  if (hasQ(/garden|сад|павильон|детск|place|площадк/))
+    return { key: "pavilion", en: "an outdoor pavilion", ru: "открытый павильон" };
+  return null;
+}
+
+const FRAME_ACTIONS: AiAction[] = [
+  { kind: "create_element", elementType: "column", x: 120, y: 180 },
+  { kind: "create_element", elementType: "column", x: 340, y: 180 },
+  { kind: "create_element", elementType: "beam", x: 120, y: 166, w: 256, h: 14 },
+];
+
+const NOOK_ACTIONS: AiAction[] = [
+  { kind: "create_element", elementType: "column", x: 160, y: 200 },
+  { kind: "create_element", elementType: "column", x: 340, y: 200 },
+  { kind: "create_element", elementType: "beam", x: 160, y: 186, w: 196, h: 14 },
+  { kind: "create_element", elementType: "room", x: 170, y: 214, w: 180, h: 120, material: "glass" },
+];
+
+const HALL_ACTIONS: AiAction[] = [
+  { kind: "create_element", elementType: "room", x: 140, y: 140 },
+  { kind: "create_element", elementType: "column", x: 178, y: 178 },
+  { kind: "create_element", elementType: "column", x: 322, y: 178 },
+  { kind: "create_element", elementType: "column", x: 178, y: 322 },
+  { kind: "create_element", elementType: "column", x: 322, y: 322 },
+];
+
+function pavilionActions(): AiAction[] {
+  return [
+    { kind: "create_element", elementType: "room", x: 140, y: 140 },
+    { kind: "create_element", elementType: "wall", x: 120, y: 126, w: 220, h: 14 },
+    { kind: "create_element", elementType: "wall", x: 120, y: 270, w: 220, h: 14 },
+    { kind: "create_element", elementType: "wall", x: 126, y: 126, w: 14, h: 158 },
+    { kind: "create_element", elementType: "wall", x: 340, y: 126, w: 14, h: 158 },
+    { kind: "create_element", elementType: "column", x: 232, y: 200 },
+  ];
+}
+
+function proposeFor(key: string, lang: Lang): TutorReply {
+  if (key === "frame")
+    return {
+      reply: k(lang,
+        "Here is your frame: two columns and a beam across their tops — the basic load path, ready to grow into a larger structure.",
+        "Вот ваш каркас: две колонны и балка поверх — базовый путь нагрузок, готовый вырасти в бо́льшую структуру."),
+      actions: FRAME_ACTIONS,
+    };
+  if (key === "nook")
+    return {
+      reply: k(lang,
+        "Here is a reading nook: a glass room shaded by a beam carried by two slim columns. Quiet, framed, open to the light.",
+        "Вот читальный уголок: стеклянная комната, прикрытая балкой на двух тонких колоннах. Тихий, обрамлённый, открытый свету."),
+      actions: NOOK_ACTIONS,
+    };
+  if (key === "hall")
+    return {
+      reply: k(lang,
+        "Here is the core of a hall: four columns holding the corners of a room — a clear module you can extend later.",
+        "Вот ядро зала: четыре колонны, держащие углы комнаты, — чистый модуль, который позже можно расширить."),
+      actions: HALL_ACTIONS,
+    };
+  return {
+    reply: k(lang,
+      "Here is a small pavilion: a room, four walls around it, and a column at its centre to carry the roof.",
+      "Вот небольшой павильон: комната, четыре стены вокруг и колонна в центре, которая несёт перекрытие."),
+    actions: pavilionActions(),
+  };
+}
+
+/** Guided design dialogue for the Studio scope. Returns null when the turn is
+    not a design-goal conversation (so normal commands/learning fall through). */
+function studioConsultation(
+  ctx: Extract<TutorContext, { scope: "studio" }>,
+  turns: string[],
+  question: string,
+  lang: Lang
+): TutorReply | null {
+  const q = question.toLowerCase();
+  const all = [...turns, question].join(" ").toLowerCase();
+  const prev = turns.slice(0, -1).join(" ").toLowerCase();
+  const program = detectProgram(all, lang);
+
+  /* tldr: this turn is a plain goal statement without context yet */
+  if (!program) {
+    if (OPEN_CREATIVE_RE.test(q)) {
+      return {
+        reply: k(lang,
+          "Tell me the core idea you want to express — the main function of the space, or the feeling it should give. For example: a quiet reading nook, a structural frame, or a bright garden pavilion.",
+          "Расскажите главную идею, которую хотите выразить, — основную функцию пространства или ощущение, которое оно должно давать. Например: тихий читальный уголок, конструктивный каркас или светлый садовый павильон."),
+      };
+    }
+    return null;
+  }
+
+  const materialKnown = MATERIAL_RE.test(prev) || MATERIAL_RE.test(q);
+  const lightKnown = LIGHT_RE.test(prev) || LIGHT_RE.test(q);
+  const unsure = UNSURE_RE.test(all);
+
+  if (!materialKnown && !unsure) {
+    return {
+      reply: k(lang,
+        `A ${program.en} — I like that. Before I sketch anything: which material feels right for this space? Options: concrete, timber, glass, steel, or brick. (e.g. "timber — warm and light")`,
+        `«${program.ru}» — мне нравится. Прежде чем что-то эскизировать: какой материал лучше подходит этому пространству? Варианты: бетон, дерево, стекло, сталь или кирпич. (например, «дерево — тепло и легко»)`),
+    };
+  }
+
+  if (!lightKnown) {
+    return {
+      reply: k(lang,
+        "Good instinct on material. Next: how should this space sit in light and its surroundings — open to a view (glass, south, green), or quieter and more enclosed?",
+        "Хороший выбор материала. Дальше: как пространство должно относиться к свету и окружению — открытым к виду (стекло, юг, зелень) или более тихим и замкнутым?"),
+    };
+  }
+
+  return proposeFor(program.key, lang);
+}
+
+function tutorAnswer(ctx: TutorContext | null, question: string, lang: Lang, userTurns: string[] = []): TutorReply {
   const q = question.toLowerCase();
   const isStudy = !ctx || ctx.scope === "study";
 
@@ -426,12 +633,47 @@ function tutorAnswer(ctx: TutorContext | null, question: string, lang: Lang): Tu
 
   /* generic studio tutor */
   const n = cctx.elementCount;
+
+  /* --- conversational design flow ----------------------------------------- */
+  const consult = studioConsultation(cctx, userTurns, question, lang);
+  if (consult) return consult;
+
+  if (has(q, /why.*column|зачем.*колонн|why.*beam|зачем.*балк|structural integrity|constru|нагрузк|path of load/)) {
+    return {
+      reply: k(lang,
+        "Every element must answer the question: what does it carry? A column concentrates a vertical load into one point of support; a beam spans between those points and bends to transfer the weight. Where would you like the loads in this plan to land — on a few strong points, or spread evenly?",
+        "Каждый элемент должен отвечать на вопрос: что он несёт? Колонна собирает вертикальную нагрузку в одной точке опоры; балка перекрывает пролёт между точками и изгибается, передавая вес. Куда вы хотите, чтобы нагрузка в плане приходилась — на несколько сильных точек или равномерно по всей площади?")
+    };
+  }
+
+  if (has(q, /what is.*material|какой материал|что такое материал|объясни.*материал|materials are|виды материал|опции материал/)) {
+    return {
+      reply: k(lang,
+        "Material decides the building's weight, texture and logic. Concrete is heavy and monolithic, timber is light and warm, glass is transparent and fragile, steel is thin and strong, brick is modular and rhythmic. Which one expresses the intent of the elements you have on the sheet right now?",
+        "Материал определяет вес, текстуру и логику здания. Бетон тяжёлый и монолитный, дерево лёгкое и тёплое, стекло прозрачное и хрупкое, сталь тонкая и прочная, кирпич модульный и ритмичный. Какой из них выражает замысел элементов, которые уже есть на вашем листе?")
+    };
+  }
+
+  if (has(q, /why.*glass|зачем.*стекло|почему.*стекл/)) {
+    return {
+      reply: k(lang,
+        "Glass is the material of transparency: it lets the architecture step back and lets light and view lead. Use it where you want to remove a wall, not where you need to carry a heavy load.",
+        "Стекло — материал прозрачности: оно позволяет архитектуре отойти в тень и пустить ведущую роль свету и виду. Используйте его там, где стену нужно «убрать», а не там, где нужно нести большую нагрузку.")
+    };
+  }
+
+  if (has(q, /light|свет|sun|солнц|view|вид|window|окн|facade|фасад/)) {
+    return {
+      reply: k(lang,
+        "Architecture is the mastery of light and view. Decide where the light comes from and what is the most important thing to see — we can open that side with glass and keep the others quiet. Want me to make that change on the sheet?",
+        "Архитектура — это мастерство света и вида. Решите, откуда идёт свет и что важнее всего увидеть, — эту сторону мы откроем стеклом, а остальные оставим тихими. Сделать это изменение на листе?")
+    };
+  }
+
   return {
     reply: k(lang,
-      `You have ${n} element${n === 1 ? "" : "s"} on the sheet. Tell me what to build or change — for example: ` +
-        `"create two columns and a beam", "check my work", or "what should I do next?".`,
-      `На листе ${n} элемен${n % 10 === 1 ? "т" : "тов"}. Скажите, что построить или изменить — например: ` +
-        `«создай две колонны и балку», «проверь мою работу» или «что делать дальше?».`),
+      `You have ${n} element${n === 1 ? "" : "s"} on the sheet. Tell me what to build or change — or describe the feeling you want for the space, and I will sketch it with you.`,
+      `На листе ${n} элемен${n % 10 === 1 ? "т" : "тов"}. Скажите, что построить или изменить, — или опишите ощущение, которое должно быть у пространства, и мы нарисуем его вместе.`),
   };
 }
 
@@ -445,26 +687,81 @@ function studyAnswer(ctx: Extract<TutorContext, { scope: "study" }>, question: s
   const firstLine = kk("Every element you place is a decision about how a building stands and is used.",
     "Каждый поставленный элемент — это решение о том, как здание стоит и используется.");
 
+  /* --- quiz answer checking ----------------------------------------------- */
+  if (ctx.quizState?.active && /^\s*[12]\s*$/.test(question.trim())) {
+    const quiz = ctx.quiz;
+    if (quiz) {
+      const picked = parseInt(question.trim()) - 1;
+      const isCorrect = picked === quiz.correct;
+      const correctText = quiz.opts[quiz.correct] ?? "";
+      const pickedText = quiz.opts[picked] ?? "";
+
+      if (isCorrect) {
+        return {
+          reply: kk(
+            `Correct! "${pickedText}" is right.\n\nWhy? In "${lessonTitle}": ${body[0] ?? firstLine}\n\nThis matters because architecture is about making the right choice at every scale — from a single detail to the whole building. Want to go deeper or move to the next topic?`,
+            `Верно! «${pickedText}» — правильный ответ.\n\nПочему? В «${lessonTitle}»: ${body[0] ?? firstLine}\n\nЭто важно, потому что архитектура — это выбор на каждом масштабе — от детали до целого здания. Хотите углубиться или перейти к следующей теме?`),
+        };
+      } else {
+        return {
+          reply: kk(
+            `Almost — you picked "${pickedText}", but the correct answer is "${correctText}".\n\nHere is why: in "${lessonTitle}", ${body[0] ?? firstLine}\n\nThe key distinction is that ${quiz.q.toLowerCase().includes("load") || quiz.q.toLowerCase().includes("нагрузк")
+              ? "loads must flow through a continuous path to the ground — any break in that path is a structural risk."
+              : "architecture is a system where every part depends on the others — getting one thing right changes everything else."}\n\nWant me to re-explain this concept more simply?`,
+            `Почти — вы выбрали «${pickedText}», но правильный ответ: «${correctText}».\n\nВот почему: в «${lessonTitle}» ${body[0] ?? firstLine}\n\nКлючевое различие: ${quiz.q.toLowerCase().includes("load") || quiz.q.toLowerCase().includes("нагрузк")
+              ? "нагрузки должны идти непрерывным путём до земли — любой разрыв в этом пути структурно опасен."
+              : "архитектура — это система, где каждая часть зависит от других. Правильное решение одной вещи меняет всё остальное."}\n\nХотите, чтобы я объяснил это проще?`),
+        };
+      }
+    }
+  }
+
+  /* --- quiz presentation (no active quiz yet) ----------------------------- */
   if (has(q, /quiz|провер|тест|check me|test me/)) {
     const quiz = ctx.quiz;
     if (quiz) {
-      const correct = quiz.opts[quiz.correct] ?? "";
       return {
         reply: kk(
-          `Quick check — ${quiz.q}\n\n1. ${quiz.opts[0] ?? ""}\n2. ${quiz.opts[1] ?? ""}\n\nAnswer: ${correct}.\n\nWhy? In "${lessonTitle}" the key idea is that ${firstLine}`,
-          `Быстрая проверка — ${quiz.q}\n\n1. ${quiz.opts[0] ?? ""}\n2. ${quiz.opts[1] ?? ""}\n\nОтвет: ${correct}.\n\nПочему? В «${lessonTitle}» ключевая мысль в том, что ${firstLine}`
-        ),
+          `Let's check your understanding.\n\n${quiz.q}\n\n1. ${quiz.opts[0] ?? ""}\n2. ${quiz.opts[1] ?? ""}\n\nReply with 1 or 2.`,
+          `Проверим ваше понимание.\n\n${quiz.q}\n\n1. ${quiz.opts[0] ?? ""}\n2. ${quiz.opts[1] ?? ""}\n\nОтветьте 1 или 2.`),
       };
     }
   }
 
-  if (has(q, /not understand|не поня|проще|simpler|simplest|простыми словами|ещё раз|again/)) {
+  /* --- depth-aware explanations ------------------------------------------- */
+  const depth = ctx.depthHint;
+
+  if (has(q, /not understand|не поня|проще|simpler|simplest|простыми словами|ещё раз|again/) || depth === "simple") {
     const lines = (body.length ? body : [firstLine]).slice(0, 2);
     return withExercise(
       kk(
         `In plain words: ${lines.join(" ")}\n\nThink of it as a rule of thumb you can test right in Studio — place a few elements and see what holds up.`,
         `Простыми словами: ${lines.join(" ")}\n\nВоспринимайте это как правило, которое можно проверить прямо в Studio — поставьте несколько элементов и посмотрите, что держится.`),
       ctx, lang);
+  }
+
+  if (depth === "deep") {
+    if (has(q, /column|колонн/)) {
+      return withExercise(
+        kk(
+          `Deep dive — columns:\n\nA column is a compression member: it takes vertical load from above and channels it down to the foundation. Its behavior depends on its slenderness ratio — a short, stocky column fails by crushing; a tall, thin one buckles.\n\nHistorically, columns evolved from tree trunks (Greek temples) to stone drums (Parthenon) to reinforced concrete (Le Corbusier's Dom-Ino) to steel tubes (Mies van der Rohe). Each material changed what was possible: stone is strong in compression but weak in tension; steel allows much slenderer profiles.\n\nIn Studio, columns are your most direct load path. When you place two columns and span a beam between them, you create a frame — the simplest complete structure. The column's material (concrete vs steel vs timber) affects its visual weight and structural capacity.\n\nTry this: place two concrete columns, then two timber columns of the same size. The concrete ones feel more permanent, the timber ones lighter — that is architecture communicating through structure.`,
+          `Углублённо — колонны:\n\nКолонна — это элемент на сжатие: она принимает вертикальную нагрузку сверху и передаёт её в фундамент. Её поведение зависит от коэффициента гибкости — короткая толстая колонна разрушается сминанием, длинная тонкая — потерей устойчивости (鸡蛋式 buckling).\n\nИсторически колонны развивались от брёвен (греческие храмы) до каменных барабанов (Парфенон) до ж/б (дом-Дом-Ино Лекорбюзье) до стальных труб (Мис ван дер Роэ). Каждый материал менял возможности: камень силён на сжатие, но слаб на растяжение; сталь позволяет более стройные профили.\n\nВ Studio колонны — самый прямой путь нагрузки. Две колонны и балка между ними создают раму — самую простую законченную конструкцию. Материал (бетон vs сталь vs дерево) влияет на визуальный вес и несущую способность.\n\nПопробуйте: поставьте две бетонные колонны, затем две деревянные того же размера. Бетонные кажутся более основательными, деревянные — более лёгкими. Это архитектура, которая общается через конструкцию.`),
+        ctx, lang);
+    }
+    if (has(q, /beam|балк/)) {
+      return withExercise(
+        kk(
+          `Deep dive — beams:\n\nA beam is a horizontal member that resists bending. When a load pushes down on its center, the top fibers compress and the bottom fibers stretch — this internal tension/compression couple is what gives the beam its strength.\n\nThe critical relationship is depth vs span: a beam's bending resistance scales with the square of its depth. Double the depth, quadruple the resistance. That is why deep beams span longer gaps.\n\nMaterials matter: concrete beams are deep and heavy (they need steel reinforcement for tension); timber beams are lighter but limited in span; steel I-beams are the most efficient — thin flanges carry tension/compression, the web resists shear.\n\nIn Studio, when you place a beam across two columns, you are creating the fundamental architectural act: spanning an opening. The beam turns solid wall into a window, a door, a view. This is how architecture creates space — by selectively removing material while keeping the load path intact.`,
+          `Углублённо — балки:\n\nБалка — горизонтальный элемент, сопротивляющийся изгибу. Когда нагрузка давит на центр, верхние волокна сжимаются, нижние растягивается — эта внутренняя пара сжатие/растяжение и даёт балке прочность.\n\nКлючевое соотношение — глубина к пролёту: сопротивление изгибу балки растёт с квадратом глубины. Удвоите глубину — вчетверо увеличьте сопротивление. Поэтому глубокие балки перекрывают бо́льшие пролёты.\n\nМатериалы важны: бетонные балки глубокие и тяжёлые (им нужна стальная арматура на растяжение); деревянные легче, но ограничены по пролёту; стальные двутавровые — самые эффективные: тонкие полки несут сжатие/растяжение, стенка сопротивляется поперечной силе.\n\nВ Studio, когда вы кладёте балку на две колонны, вы совершаете фундаментальный архитектурный акт: перекрываете проём. Балка превращает сплошную стену в окно, дверь, вид. Так архитектура создаёт пространство — избирательно убирая материал, сохраняя путь нагрузки.`),
+        ctx, lang);
+    }
+    if (has(q, /wall|стен/)) {
+      return withExercise(
+        kk(
+          `Deep dive — walls:\n\nWalls serve two fundamentally different roles: structural (load-bearing) and spatial (partition). A load-bearing wall is a vertical beam — it carries weight from above and transfers it down. Remove it and the building collapses. A partition merely divides space — remove it and the room just gets bigger.\n\nHistorically, walls were the primary structure: thick stone walls (castles), brick walls (Georgian townhouses), adobe walls (desert vernacular). The invention of the frame (steel + concrete) freed walls from structural duty — hence Mies's famous "skin and bones" architecture.\n\nIn Studio, when you place a wall, ask: "Is this carrying something or shaping something?" A wall under a beam is structural. A wall dividing a room is a partition. This distinction is the beginning of architectural thinking.\n\nThe wall's thickness matters too: a 14px wall reads as thin/partition; a thicker wall reads as solid/structural. Material reinforces this: brick = weight, glass = transparency, timber = warmth.`,
+          `Углублённо — стены:\n\nСтены выполняют две фундаментально разные роли: структурную (несущую) и пространственную (перегородка). Несущая стена — это вертикальная балка: она несёт вес сверху и передаёт его вниз. Уберите её — здание рухнет. Перегородка лишь разделяет пространство — уберите её, и комната просто станет больше.\n\nИсторически стены были основной конструкцией: толстые каменные стены (замки), кирпичные стены (георгианские особняки), глинобитные стены (пустынная vernacular). Изобретение каркаса (сталь + бетон) освободило стены от структурной роли — отсюда знаменитая «кожа и кости» Миса ван дер Роэ.\n\nВ Studio, когда вы ставите стену, спросите: «Она что-то несёт или формирует?» Стена под балкой — структурная. Стена, разделяющая комнату — перегородка. Это различие — начало архитектурного мышления.\n\nТолщина стены тоже важна: 14px читается как тонкая/перегородка; толстая — как массивная/"structural". Материал подкрепляет это: кирпич = вес, стекло = прозрачность, дерево = теплота.`),
+        ctx, lang);
+    }
   }
 
   if (has(q, /example|пример|instance/)) {

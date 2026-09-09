@@ -18,6 +18,7 @@ interface AiMsg {
 interface AiChatRequest {
   messages?: AiMsg[];
   lang?: string;
+  stream?: boolean;
 }
 
 function aiKey(): string | undefined {
@@ -60,6 +61,7 @@ export function axiomAiPlugin(): Plugin {
           role: (m.role ?? "user") as string,
           content: String(m.content ?? ""),
         }));
+        const stream = body.stream === true;
         try {
           const upstream = await fetch(aiUrl(), {
             method: "POST",
@@ -71,6 +73,7 @@ export function axiomAiPlugin(): Plugin {
               model: process.env.AXIOM_AI_MODEL || "gpt-4o-mini",
               temperature: 0.4,
               max_tokens: 500,
+              stream,
               messages,
             }),
           });
@@ -79,11 +82,50 @@ export function axiomAiPlugin(): Plugin {
             res.end(JSON.stringify({ error: `upstream ${upstream.status}` }));
             return;
           }
-          const data = (await upstream.json()) as { choices?: Array<{ message?: { content?: string } }> };
-          const reply = data.choices?.[0]?.message?.content ?? "";
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify({ reply }));
+          if (stream && upstream.body) {
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "text/event-stream");
+            res.setHeader("Cache-Control", "no-cache");
+            res.setHeader("Connection", "keep-alive");
+            const reader = upstream.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() ?? "";
+                for (const line of lines) {
+                  if (line.startsWith("data: ")) {
+                    const data = line.slice(6).trim();
+                    if (data === "[DONE]") {
+                      res.write("data: [DONE]\n\n");
+                    } else {
+                      try {
+                        const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
+                        const delta = parsed.choices?.[0]?.delta?.content;
+                        if (delta) {
+                          res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+                        }
+                      } catch {
+                        /* skip malformed chunks */
+                      }
+                    }
+                  }
+                }
+              }
+            } finally {
+              res.end();
+            }
+          } else {
+            const data = (await upstream.json()) as { choices?: Array<{ message?: { content?: string } }> };
+            const reply = data.choices?.[0]?.message?.content ?? "";
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ reply }));
+          }
         } catch (e) {
           res.statusCode = 502;
           res.end(JSON.stringify({ error: String((e as Error)?.message ?? e) }));

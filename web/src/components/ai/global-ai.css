@@ -1,0 +1,131 @@
+/* AXIOM — global AI corner window. A focused tutor above every page. */
+
+.g-ai {
+  position: fixed;
+  right: 12px;
+  bottom: calc(var(--statusbar-h) + 12px);
+  width: 400px;
+  height: 560px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.5),
+    0 2px 10px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  z-index: var(--z-overlay);
+  animation: g-ai-in var(--t-page) var(--ease-out);
+}
+
+.g-ai .ai {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+}
+
+/* corner bracket — architectural drafting notation */
+.g-ai__frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.9;
+  border-radius: var(--r-md) 0 0 0;
+}
+
+/* corner drag handle */
+.g-ai__resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 3px;
+  padding: 4px 5px 4px 0;
+  cursor: nwse-resize;
+  z-index: 3;
+  opacity: 0.5;
+  transition: opacity var(--t-fast);
+}
+.g-ai__resize:hover {
+  opacity: 1;
+}
+.g-ai__resize i {
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--tx4);
+  border-bottom: 1.5px solid var(--tx4);
+}
+
+@keyframes g-ai-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* collapsed launch button */
+.g-ai-fab {
+  position: fixed;
+  right: 12px;
+  bottom: calc(var(--statusbar-h) + 10px);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 var(--sp-3) 0 var(--sp-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-ctl);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.1em;
+  color: var(--tx3);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  z-index: var(--z-overlay);
+  transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
+}
+.g-ai-fab:hover {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--tx);
+}
+
+.g-ai-fab__glyph {
+  color: var(--accent-tx);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+}
+
+.g-ai-fab__live-dot {
+  display: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--ok);
+  box-shadow: 0 0 6px rgba(63, 182, 139, 0.4);
+}
+.g-ai-fab__live-dot--on {
+  display: block;
+}

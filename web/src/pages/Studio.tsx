@@ -18,40 +18,43 @@ import {
   elementName,
 } from "@/studio/domain";
 import type { Element as StudioElement, Tool } from "@/studio/types";
+import { Sparkles, MousePointer2, Move, StretchHorizontal, LayoutGrid, Columns3, Plus } from "lucide-react";
 import "./Studio.css";
+
+const ZOOM_STEP = 0.15;
 
 interface ToolDef {
   t: Tool;
-  icon: string;
+  icon: React.ReactNode;
   label: string;
   key?: string;
 }
 
 const NAV_TOOLS: ToolDef[] = [
-  { t: "select", icon: "⌖", label: "Select", key: "V" },
-  { t: "move", icon: "✥", label: "Move", key: "M" },
+  { t: "select", icon: <MousePointer2 size={14} />, label: "Select", key: "V" },
+  { t: "move", icon: <Move size={14} />, label: "Move", key: "M" },
 ];
 
 const BUILD_TOOLS: ToolDef[] = [
-  { t: "wall", icon: "—", label: "Wall", key: "W" },
-  { t: "room", icon: "▭", label: "Room", key: "R" },
-  { t: "column", icon: "⬢", label: "Column", key: "C" },
-  { t: "beam", icon: "━", label: "Beam", key: "B" },
+  { t: "wall", icon: <StretchHorizontal size={14} />, label: "Wall", key: "W" },
+  { t: "room", icon: <LayoutGrid size={14} />, label: "Room", key: "R" },
+  { t: "column", icon: <Columns3 size={14} />, label: "Column", key: "C" },
+  { t: "beam", icon: <StretchHorizontal size={14} />, label: "Beam", key: "B" },
 ];
 
 const ELEMENT_LABELS: Record<StudioElement["kind"], string> = {
   room: "ROOM",
   wall: "WALL",
-  column: "⬢",
+  column: "▮",
   beam: "BEAM",
 };
 
-function Ruler({ width }: { width: number }) {
-  const s = width / SHEET_W;
+function Ruler({ width, zoom }: { width: number; zoom: number }) {
+  const s = (width * zoom) / SHEET_W;
   const ticks = Array.from({ length: Math.floor(SHEET_W / GRID_STEP) + 1 }, (_, i) => i * GRID_STEP);
   const labels = [0, 4, 8, 12, 16, 20];
   return (
-    <div className="ruler" style={{ width }}>
+    <div className="ruler" style={{ width: width * zoom }}>
       {ticks.map((t) => (
         <span key={t} className="ruler__tick" style={{ left: t * s }} />
       ))}
@@ -77,6 +80,15 @@ function Canvas() {
   const selectedId = useStudio((s) => s.selectedId);
   const elements = useStudio((s) => s.projects[s.currentIdx]?.elements ?? []);
   const flash = useTutor((s) => s.lastAction);
+  const zoom = useStudio((s) => s.zoom);
+  const panX = useStudio((s) => s.panX);
+  const panY = useStudio((s) => s.panY);
+  const zoomBy = useStudio((s) => s.zoomBy);
+  const startPan = useStudio((s) => s.startPan);
+  const dragPan = useStudio((s) => s.dragPan);
+  const endPan = useStudio((s) => s.endPan);
+  const _panning = useStudio((s) => s._panning);
+  const _snapGuides = useStudio((s) => s._snapGuides);
 
   const zoneRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<SVGSVGElement>(null);
@@ -98,6 +110,17 @@ function Canvas() {
     return () => ro.disconnect();
   }, []);
 
+  const effectiveW = Math.round(fit.w * zoom);
+  const effectiveH = Math.round(fit.h * zoom);
+
+  const viewBoxStr = useMemo(() => {
+    const vw = SHEET_W / zoom;
+    const vh = SHEET_H / zoom;
+    const vx = -panX / (fit.k * zoom);
+    const vy = -panY / (fit.k * zoom);
+    return `${vx} ${vy} ${vw} ${vh}`;
+  }, [zoom, panX, panY, fit.k]);
+
   const toLogical = (e: { clientX: number; clientY: number }) => {
     const rect = sheetRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0) return { x: 0, y: 0 };
@@ -105,6 +128,36 @@ function Canvas() {
       x: ((e.clientX - rect.left) / rect.width) * SHEET_W,
       y: ((e.clientY - rect.top) / rect.height) * SHEET_H,
     };
+  };
+
+  const onWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const rect = sheetRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const cx = e.clientX - rect.left - rect.width / 2;
+    const cy = e.clientY - rect.top - rect.height / 2;
+    const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+    zoomBy(delta, cx * (fit.k * zoom), cy * (fit.k * zoom));
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      e.preventDefault();
+      startPan(e.clientX, e.clientY);
+      try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    }
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (_panning) {
+      dragPan(e.clientX, e.clientY);
+    }
+  };
+
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (_panning) {
+      endPan();
+    }
   };
 
   const grab = (
@@ -134,15 +187,22 @@ function Canvas() {
   const buildTool = tool === "wall" || tool === "room" || tool === "column" || tool === "beam";
 
   return (
-    <div className={`canvas-zone ${buildTool ? "canvas-zone--build" : ""}`} ref={zoneRef}>
-      <div className="canvas-stage" style={{ width: fit.w }}>
-        <Ruler width={fit.w} />
+    <div
+      className={`canvas-zone ${buildTool ? "canvas-zone--build" : ""} ${_panning ? "canvas-zone--panning" : ""}`}
+      ref={zoneRef}
+      onWheel={onWheel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      <div className="canvas-stage" style={{ width: effectiveW }}>
+        <Ruler width={fit.w} zoom={zoom} />
         <svg
           ref={sheetRef}
           className="sheet"
-          viewBox={`0 0 ${SHEET_W} ${SHEET_H}`}
-          width={fit.w}
-          height={fit.h}
+          viewBox={viewBoxStr}
+          width={effectiveW}
+          height={effectiveH}
         >
           <rect
             x={0}
@@ -186,6 +246,34 @@ function Canvas() {
             >
               empty sheet — pick a build tool, click to place
             </text>
+          )}
+
+          {_snapGuides.map((g, i) =>
+            g.type === "v" ? (
+              <line
+                key={`sg${i}`}
+                x1={g.pos}
+                y1={0}
+                x2={g.pos}
+                y2={SHEET_H}
+                stroke="var(--accent)"
+                strokeWidth={0.5}
+                strokeDasharray="4 4"
+                style={{ pointerEvents: "none" }}
+              />
+            ) : (
+              <line
+                key={`sg${i}`}
+                x1={0}
+                y1={g.pos}
+                x2={SHEET_W}
+                y2={g.pos}
+                stroke="var(--accent)"
+                strokeWidth={0.5}
+                strokeDasharray="4 4"
+                style={{ pointerEvents: "none" }}
+              />
+            )
           )}
 
           {elements.map((el) => (
@@ -319,8 +407,6 @@ export function StudioPage() {
     if (aiRequest > 0) {
       const u = useUi.getState();
       u.consumeAiRequest();
-      setAiOpen(true);
-      setAiTab("chat");
     }
   }, [aiRequest]);
   const exercise = useTutor((st) => st.exercise);
@@ -352,6 +438,41 @@ export function StudioPage() {
       if (mod && k === "d") {
         e.preventDefault();
         if (st.selectedId) st.duplicate(st.selectedId);
+        return;
+      }
+      if (mod && k === "c") {
+        e.preventDefault();
+        if (st.selectedId) st.copy(st.selectedId);
+        return;
+      }
+      if (mod && k === "v") {
+        e.preventDefault();
+        st.paste();
+        return;
+      }
+      if (mod && k === "[") {
+        e.preventDefault();
+        if (st.selectedId) st.moveBackward(st.selectedId);
+        return;
+      }
+      if (mod && k === "]") {
+        e.preventDefault();
+        if (st.selectedId) st.moveForward(st.selectedId);
+        return;
+      }
+      if (mod && (k === "=" || k === "+")) {
+        e.preventDefault();
+        st.zoomBy(ZOOM_STEP);
+        return;
+      }
+      if (mod && k === "-") {
+        e.preventDefault();
+        st.zoomBy(-ZOOM_STEP);
+        return;
+      }
+      if (mod && k === "0") {
+        e.preventDefault();
+        st.resetView();
         return;
       }
 
@@ -405,7 +526,7 @@ export function StudioPage() {
       <aside className="studio-dock">
         <div className="dock__scroll">
           <div className="dock__group">
-            <Caption text="TOOLS" />
+            <span className="eyebrow">Inspect</span>
           </div>
           {NAV_TOOLS.map((td) => (
             <ToolButton
@@ -419,7 +540,7 @@ export function StudioPage() {
           ))}
           <div className="dock__gap" />
           <div className="dock__group">
-            <Caption text="BUILD" />
+            <span className="eyebrow">Build</span>
           </div>
           {BUILD_TOOLS.map((td) => (
             <ToolButton
@@ -433,14 +554,14 @@ export function StudioPage() {
           ))}
           <div className="dock__gap" />
           <div className="dock__layers-head">
-            <Caption text="LAYERS" />
+            <span className="eyebrow">Layers</span>
             <span className="dock__spacer" />
             <span className="dock__count mono">{elements.length}</span>
             <button className="dock__clear mono" onClick={deselect}>
               clear
             </button>
           </div>
-          {elements.length === 0 && <div className="dock__empty mono">— empty —</div>}
+          {elements.length === 0 && <div className="dock__empty mono">— empty sheet —</div>}
           <div className="dock__tree">
             {elements.map((el) => (
               <TreeRow
@@ -460,6 +581,9 @@ export function StudioPage() {
 
       <section className="studio-viewport">
         <div className="viewport-info">
+          <span className="viewport-info__tool mono">
+            {tool.toUpperCase()}
+          </span>
           <span className="viewport-info__hint mono">
             {tool === "select"
               ? s.selectHint
@@ -471,6 +595,7 @@ export function StudioPage() {
           <span className={selectedId ? "viewport-info__sel mono viewport-info__sel--on" : "viewport-info__sel mono"}>
             {sel ? `${elementName(project!, sel.id)} · ${MATERIAL_LABELS[sel.material]}` : s.noSelectionHint}
           </span>
+          <span className="viewport-info__zoom mono">{useStudio.getState().zoomLabel}</span>
           <button
             className={`viewport-ai ${aiOpen ? "viewport-ai--on" : ""}`}
             onClick={() => {
@@ -479,7 +604,7 @@ export function StudioPage() {
             }}
             title={s.aiAskCta}
           >
-            <span className="viewport-ai__glyph">◇</span>
+            <Sparkles size={13} />
             <span className="viewport-ai__label mono">{s.aiAskAi}</span>
           </button>
         </div>
@@ -493,6 +618,7 @@ export function StudioPage() {
 
       <aside className={`studio-inspector ${aiOpen ? "studio-inspector--ai" : ""}`}>
         <div className={`inspector-ai-toggle ${aiOpen || exercise ? "inspector-ai-toggle--active" : ""}`}>
+          <Sparkles size={12} />
           <span className="inspector-ai-toggle__label mono">
             {exercise ? `${s.aiChallenge} · ${exercise.title}` : s.aiStudio}
           </span>
@@ -505,7 +631,7 @@ export function StudioPage() {
             }}
             title={s.aiAskCta}
           >
-            {aiOpen ? "×" : "◇ AI"}
+            {aiOpen ? "×" : "+"}
           </button>
         </div>
         <Inspector />

@@ -307,3 +307,58 @@ export function parseExerciseBlock(reply: string): { text: string; exercise?: No
     return { text };
   }
 }
+
+export interface ParsedLesson {
+  courseTag: string;
+  title: { en: string; ru: string };
+  duration: string;
+  level: string;
+  body: { en: string[]; ru: string[] };
+  quiz: {
+    q: { en: string; ru: string };
+    opts: { en: string[]; ru: string[] };
+    correct: number;
+  };
+}
+
+/** Parse + validate a <axiom-lesson> block the model may embed for course generation. */
+export function parseLessonBlock(reply: string): { text: string; lesson?: ParsedLesson } {
+  const m = reply.match(/<axiom-lesson>([\s\S]*?)<\/axiom-lesson>/i);
+  if (!m) return { text: reply };
+  const text = reply.replace(/<axiom-lesson>[\s\S]*?<\/axiom-lesson>/gi, "").trim();
+  try {
+    const raw = JSON.parse(m[1]) as Record<string, unknown>;
+    const title = raw.title as Record<string, string> | undefined;
+    const body = raw.body as Record<string, string[]> | undefined;
+    const quiz = raw.quiz as Record<string, unknown> | undefined;
+    if (!title?.en || !body?.en || !quiz) return { text };
+
+    const quizQ = quiz.q as Record<string, string> | undefined;
+    const quizOpts = quiz.opts as Record<string, string[]> | undefined;
+    if (!quizQ?.en || !Array.isArray(quizOpts?.en) || quizOpts.en.length < 2) return { text };
+
+    return {
+      text,
+      lesson: {
+        courseTag: typeof raw.courseTag === "string" ? raw.courseTag : "ai-generated",
+        title: { en: String(title.en), ru: String(title.ru ?? title.en) },
+        duration: typeof raw.duration === "string" ? raw.duration : "10 min",
+        level: typeof raw.level === "string" ? raw.level : "beginner",
+        body: {
+          en: Array.isArray(body.en) ? body.en.map(String) : [],
+          ru: Array.isArray(body.ru) ? body.ru.map(String) : body.en.map(String),
+        },
+        quiz: {
+          q: { en: String(quizQ.en), ru: String(quizQ.ru ?? quizQ.en) },
+          opts: {
+            en: quizOpts.en.map(String),
+            ru: Array.isArray(quizOpts.ru) ? quizOpts.ru.map(String) : quizOpts.en.map(String),
+          },
+          correct: typeof quiz.correct === "number" ? quiz.correct : 0,
+        },
+      },
+    };
+  } catch {
+    return { text };
+  }
+}

@@ -1,0 +1,93 @@
+import { HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { Theme } from "../theme/colors.slint";
+import { Type } from "../theme/typography.slint";
+import { Metrics } from "../theme/metrics.slint";
+import { AppState } from "../state.slint";
+import { RailBtn, BarBtn, StatusCell } from "../components/core.slint";
+
+// Global IDE shell: activity bar (nav) + title bar (doc/actions) + status bar.
+// Persistent on every view — this frame IS the new information architecture.
+
+export component ActivityBar inherits Rectangle {
+    width: Metrics.activity;
+    background: Theme.bg;
+    VerticalBox {
+        padding: 4px; spacing: 2px;
+        Rectangle {
+            height: 36px;
+            Text { text: "A"; font-size: 13px; font-weight: 700; color: Theme.accent-tx; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        RailBtn { icon: "⌂"; active: AppState.view == "home"; clicked => { AppState.view = "home"; } }
+        RailBtn { icon: "⬢"; active: AppState.view == "studio"; clicked => { AppState.view = "studio"; } }
+        RailBtn { icon: "◐"; active: AppState.view == "study"; clicked => { AppState.view = "study"; } }
+        RailBtn { icon: "◎"; active: AppState.view == "explore"; clicked => { AppState.view = "explore"; } }
+        Rectangle {}
+        RailBtn { icon: AppState.lang == "en" ? "EN" : "РУ"; active: false; clicked => { AppState.lang = AppState.lang == "en" ? "ru" : "en"; } }
+    }
+    Rectangle { x: parent.width - 1px; width: 1px; height: 100%; background: Theme.line-soft; }
+}
+
+export component TitleBar inherits Rectangle {
+    height: Metrics.titlebar;
+    background: Theme.bg;
+    VerticalBox {
+        padding: 0; spacing: 0;
+        HorizontalBox {
+            padding-left: 10px; padding-right: 8px; spacing: 8px;
+            // document context
+            HorizontalBox {
+                spacing: 8px;
+                Text { text: "AXIOM"; font-size: 11px; font-weight: 700; color: Theme.tx; letter-spacing: 1.5px; vertical-alignment: center; }
+                Rectangle { width: 1px; height: 14px; background: Theme.line; }
+                if (AppState.view == "studio"): HorizontalBox {
+                    spacing: 6px;
+                    Rectangle { width: 6px; height: 6px; border-radius: 3px; background: Theme.ok; }
+                    Text { text: AppState.project-name; font-size: Type.ctl; font-weight: 600; color: Theme.tx; vertical-alignment: center; overflow: elide; }
+                    Text { text: "— sheet A-101"; font-size: Type.meta; color: Theme.tx3; vertical-alignment: center; }
+                    TouchArea { mouse-cursor: pointer; clicked => { AppState.request-new-project(); } Text { text: "+"; font-size: 13px; color: Theme.tx2; vertical-alignment: center; } }
+                }
+                if (AppState.view == "home"): Text { text: "START"; font-size: Type.meta; font-weight: 700; color: Theme.tx3; letter-spacing: 1.2px; vertical-alignment: center; }
+                if (AppState.view == "study"): Text { text: "STUDY — workspace"; font-size: Type.meta; font-weight: 700; color: Theme.tx3; letter-spacing: 1.2px; vertical-alignment: center; }
+                if (AppState.view == "explore"): Text { text: "EXPLORE — index"; font-size: Type.meta; font-weight: 700; color: Theme.tx3; letter-spacing: 1.2px; vertical-alignment: center; }
+            }
+            Rectangle {}
+            // permanent actions: only what deserves global space
+            if (AppState.view == "studio"): HorizontalBox {
+                spacing: 4px;
+                BarBtn { text: "↩"; enabled: AppState.undo-enabled; clicked => { AppState.request-undo(); } }
+                BarBtn { text: "↪"; enabled: AppState.redo-enabled; clicked => { AppState.request-redo(); } }
+                Rectangle { width: 6px; }
+                BarBtn { text: "Save"; clicked => { AppState.request-save(); } }
+                BarBtn { text: "Export"; kind: "primary"; clicked => { AppState.request-export(); } }
+            }
+            if (AppState.view != "studio"): BarBtn { text: "Open Studio"; kind: "primary"; clicked => { AppState.view = "studio"; } }
+        }
+        Rectangle { height: 1px; background: Theme.line-soft; }
+    }
+}
+
+export component StatusBar inherits Rectangle {
+    height: Metrics.statusbar;
+    background: Theme.bg;
+    VerticalBox {
+        padding: 0; spacing: 0;
+        Rectangle { height: 1px; background: Theme.line-soft; }
+        HorizontalBox {
+            padding-left: 10px; padding-right: 10px; spacing: 12px;
+            Rectangle { width: 6px; height: 6px; border-radius: 3px; background: AppState.view == "studio" ? (AppState.studio-tool == "select" ? Theme.ok : Theme.accent) : Theme.tx3; }
+            StatusCell {
+                text: AppState.view == "studio" ? ("STUDIO · " + AppState.studio-tool) : (AppState.view == "home" ? "START" : (AppState.view == "study" ? "STUDY" : "EXPLORE"));
+            }
+            Rectangle {}
+            if (AppState.view == "studio"): HorizontalBox {
+                spacing: 12px;
+                StatusCell { text: AppState.cursor-label; mono: true; }
+                StatusCell { text: AppState.zoom-label; mono: true; }
+                StatusCell { text: "snap 8"; mono: true; }
+                StatusCell { text: AppState.elements.length + " el"; mono: true; }
+            }
+            if (AppState.view != "studio"): StatusCell { text: AppState.elements.length + " el · " + AppState.project-name; mono: true; }
+            StatusCell { text: AppState.saved-label; }
+        }
+    }
+}

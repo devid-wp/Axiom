@@ -10,8 +10,12 @@ export function InspectorSection({ title, children, defaultOpen = true }: Props)
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="prop-group">
-      <button className="prop-group__head" onClick={() => setOpen((o) => !o)}>
-        <span className="prop-group__caret">{open ? "▾" : "▸"}</span>
+      <button
+        className={`prop-group__head ${open ? "prop-group__head--open" : ""}`}
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <span className="prop-group__caret">{open ? "−" : "+"}</span>
         <span className="prop-group__title">{title}</span>
       </button>
       {open && <div className="prop-group__body">{children}</div>}

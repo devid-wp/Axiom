@@ -116,6 +116,87 @@ export function snap8(v: number): number {
   return Math.round(v / SNAP) * SNAP;
 }
 
+export interface SnapGuide {
+  type: "v" | "h";
+  pos: number;
+}
+
+const SNAP_THRESHOLD = 12;
+
+export function snapToElements(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  others: StudioElement[],
+  draggedId?: string
+): { x: number; y: number; guides: SnapGuide[] } {
+  const guides: SnapGuide[] = [];
+  let bestDx = SNAP_THRESHOLD + 1;
+  let bestDy = SNAP_THRESHOLD + 1;
+  let snappedX = x;
+  let snappedY = y;
+
+  const myEdges = {
+    left: x,
+    right: x + w,
+    cx: x + w / 2,
+    top: y,
+    bottom: y + h,
+    cy: y + h / 2,
+  };
+
+  for (const o of others) {
+    if (draggedId && o.id === draggedId) continue;
+
+    const oEdges = [
+      o.x,
+      o.x + o.w,
+      (o.x + o.w) / 2,
+      o.x + o.w / 2,
+    ];
+    const oEdgesY = [
+      o.y,
+      o.y + o.h,
+      (o.y + o.h) / 2,
+      o.y + o.h / 2,
+    ];
+
+    for (const ox of [o.x, o.x + o.w, (o.x + o.w) / 2]) {
+      const dxLeft = Math.abs(myEdges.left - ox);
+      const dxRight = Math.abs(myEdges.right - ox);
+      const dxCx = Math.abs(myEdges.cx - ox);
+
+      if (dxLeft < bestDx) { bestDx = dxLeft; snappedX = ox; }
+      if (dxRight < bestDx) { bestDx = dxRight; snappedX = ox - w; }
+      if (dxCx < bestDx) { bestDx = dxCx; snappedX = ox - w / 2; }
+    }
+
+    for (const oy of [o.y, o.y + o.h, (o.y + o.h) / 2]) {
+      const dyTop = Math.abs(myEdges.top - oy);
+      const dyBottom = Math.abs(myEdges.bottom - oy);
+      const dyCy = Math.abs(myEdges.cy - oy);
+
+      if (dyTop < bestDy) { bestDy = dyTop; snappedY = oy; }
+      if (dyBottom < bestDy) { bestDy = dyBottom; snappedY = oy - h; }
+      if (dyCy < bestDy) { bestDy = dyCy; snappedY = oy - h / 2; }
+    }
+  }
+
+  if (bestDx <= SNAP_THRESHOLD) {
+    guides.push({ type: "v", pos: snappedX + w / 2 });
+  }
+  if (bestDy <= SNAP_THRESHOLD) {
+    guides.push({ type: "h", pos: snappedY + h / 2 });
+  }
+
+  return {
+    x: bestDx <= SNAP_THRESHOLD ? snappedX : snap8(x),
+    y: bestDy <= SNAP_THRESHOLD ? snappedY : snap8(y),
+    guides,
+  };
+}
+
 export function elementsEqual(a: StudioElement[], b: StudioElement[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {

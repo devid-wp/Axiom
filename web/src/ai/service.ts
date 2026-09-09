@@ -14,6 +14,7 @@ import type {
   ChatMessage,
   TutorRequest,
   TutorProvider,
+  TutorChunk,
 } from "./types";
 import { isDestructive, TutorUnavailableError } from "./types";
 import { HttpTutorProvider, MockTutorProvider, type TutorMode } from "./provider";
@@ -22,10 +23,12 @@ import {
   executeActions,
   parseActionsBlock,
   parseExerciseBlock,
+  parseLessonBlock,
   type ExecResult,
 } from "./actions";
+import { useGenerated, type GeneratedLesson } from "@/store/generated";
 
-export type TutorStatus = "idle" | "thinking" | "response" | "error";
+export type TutorStatus = "idle" | "thinking" | "streaming" | "response" | "error";
 
 export interface AiPending {
   actions: AiAction[];
@@ -111,10 +114,12 @@ function patchSession(scope: AiScope, patch: Partial<TutorSession>) {
 function mergeResult(res: { reply: string; actions?: AiAction[]; exercise?: AiExercisePayload }) {
   const b = parseActionsBlock(res.reply);
   const ex = parseExerciseBlock(b.text);
+  const lesson = parseLessonBlock(ex.text);
   return {
-    text: ex.text.trim() || res.reply.trim(),
+    text: lesson.text.trim() || res.reply.trim(),
     actions: res.actions ?? b.actions,
     exercise: res.exercise ?? ex.exercise,
+    lesson: lesson.lesson,
   };
 }
 
@@ -220,8 +225,97 @@ export const useTutor = create<TutorState>()((set, get) => ({
     }
 
     const deliver = async (p: TutorProvider): Promise<void> => {
+      if (p.chatStream) {
+        try {
+          const streamReq = buildRequest(scope, q);
+          patchSession(scope, { status: "streaming" });
+          pushMessage(scope, { role: "assistant", content: "" });
+          let accumulated = "";
+
+          for await (const chunk of p.chatStream(streamReq)) {
+            if (chunk.type === "text") {
+              accumulated += chunk.delta;
+              const msgs = useTutor.getState().sessions[scope].messages;
+              const lastIdx = msgs.length - 1;
+              patchSession(scope, {
+                messages: msgs.map((m, i) => (i === lastIdx ? { ...m, content: accumulated } : m)),
+              });
+            } else if (chunk.type === "done") {
+              break;
+            }
+          }
+
+          const merged = mergeResult({ reply: accumulated });
+          const { actions, exercise, lesson } = merged;
+
+          if (lesson) {
+            const id = `gen-${Date.now().toString(36)}`;
+            useGenerated.getState().addLesson({
+              id,
+              courseTag: lesson.courseTag,
+              title: lesson.title,
+              duration: lesson.duration,
+              level: lesson.level,
+              body: lesson.body,
+              quiz: lesson.quiz,
+              createdAt: new Date().toISOString(),
+            });
+          }
+
+          const msgs = useTutor.getState().sessions[scope].messages;
+          const lastIdx = msgs.length - 1;
+
+          if (actions.length > 0 && actions.some(isDestructive)) {
+            patchSession(scope, {
+              messages: msgs.map((m, i) => (i === lastIdx ? { ...m, pending: true } : m)),
+              pending: { actions, note: accumulated },
+              status: "response",
+            });
+            return;
+          }
+          if (actions.length > 0) {
+            const msg = await performActions(scope, actions, accumulated, p.name, req.lang);
+            patchSession(scope, {
+              messages: [...msgs.slice(0, lastIdx), msg],
+              status: "response",
+            });
+            return;
+          }
+          patchSession(scope, {
+            messages: msgs.map((m, i) =>
+              i === lastIdx ? { ...m, content: accumulated, exercise: exercise ?? undefined } : m
+            ),
+            status: "response",
+          });
+          return;
+        } catch {
+          /* streaming failed, fall through to non-streaming */
+        }
+      }
+
       const res = await p.chat(req);
-      const { text, actions, exercise } = mergeResult(res);
+      const { text, actions, exercise, lesson } = mergeResult(res);
+
+      if (lesson) {
+        const id = `gen-${Date.now().toString(36)}`;
+        const generated: GeneratedLesson = {
+          id,
+          courseTag: lesson.courseTag,
+          title: lesson.title,
+          duration: lesson.duration,
+          level: lesson.level,
+          body: lesson.body,
+          quiz: lesson.quiz,
+          createdAt: new Date().toISOString(),
+        };
+        useGenerated.getState().addLesson(generated);
+        pushMessage(scope, {
+          role: "assistant",
+          content: `${text}\n\n✓ Lesson "${lesson.title.en}" added to courses. Refresh the Study page to see it.`,
+        });
+        patchSession(scope, { status: "response" });
+        return;
+      }
 
       if (actions.length > 0 && actions.some(isDestructive)) {
         patchSession(scope, { pending: { actions, note: text }, status: "response" });

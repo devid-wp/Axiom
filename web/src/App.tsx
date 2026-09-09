@@ -6,6 +6,7 @@ import { StartPage } from "@/pages/Start";
 import { StudioPage } from "@/pages/Studio";
 import { StudyPage } from "@/pages/Study";
 import { ExplorePage } from "@/pages/Explore";
+import { GlobalAi } from "@/components/ai/GlobalAi";
 
 export default function App() {
   const view = useUi((s) => s.view);
@@ -22,6 +23,7 @@ export default function App() {
         </main>
         <StatusBar />
       </div>
+      <GlobalAi />
     </div>
   );
 }
