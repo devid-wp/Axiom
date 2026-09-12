@@ -1,3 +1,5 @@
+import "./content.css";
+
 interface Props {
   idx: string;
   title: string;

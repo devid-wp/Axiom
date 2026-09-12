@@ -120,7 +120,9 @@
 .tree-head__title {
   font-size: var(--fs-ctl);
   font-weight: var(--fw-semibold);
-  color: var(--tx2);
+  letter-spacing: var(--track-mid);
+  text-transform: uppercase;
+  color: var(--tx);
   transition: color var(--t-fast);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -135,14 +137,14 @@
   font-family: var(--font-mono);
 }
 
-/* ============ LESSON ROW ============ */
+/* ============ LESSON ROW (two-line curriculum item) ============ */
 .lesson-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--sp-2);
   width: 100%;
   min-height: 32px;
-  padding: 4px var(--sp-3) 4px var(--sp-4);
+  padding: 5px var(--sp-3) 5px var(--sp-4);
   border-radius: var(--r-sm);
   background: transparent;
   transition: background var(--t-fast);
@@ -159,19 +161,41 @@
 .lesson-row--active {
   background: var(--accent-wash);
 }
-.lesson-row__num {
-  width: 20px;
+.lesson-row__status {
+  width: 14px;
   font-size: var(--fs-micro);
+  line-height: 1.5;
   color: var(--tx4);
   text-align: center;
   flex-shrink: 0;
-  font-family: var(--font-mono);
   transition: color var(--t-fast);
 }
-.lesson-row__num--done {
+.lesson-row__status--done {
   color: var(--ok);
 }
-.lesson-row--active .lesson-row__num:not(.lesson-row__num--done) {
+.lesson-row--active .lesson-row__status:not(.lesson-row__status--done) {
+  color: var(--accent-tx);
+}
+.lesson-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.lesson-row__top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.lesson-row__num {
+  font-size: var(--fs-micro);
+  color: var(--tx4);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+.lesson-row--active .lesson-row__num {
   color: var(--accent-tx);
 }
 .lesson-row__text {
@@ -191,6 +215,7 @@
   font-size: var(--fs-micro);
   color: var(--tx4);
   font-family: var(--font-mono);
+  padding-left: calc(var(--sp-2) + 1ch);
 }
 
 /* ============ QUIZ OPTION ============ */

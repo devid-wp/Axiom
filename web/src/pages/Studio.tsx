@@ -22,6 +22,8 @@ import {
 } from "@/studio/domain";
 import type { Element as StudioElement, ElementKind, Tool } from "@/studio/types";
 import { Sparkles, MousePointer2, Move } from "lucide-react";
+import { GuidedBar, ModePill } from "@/guided/GuidedBar";
+import { useGuided } from "@/guided/store";
 import "./Studio.css";
 
 const ZOOM_STEP = 0.15;
@@ -525,6 +527,10 @@ export function StudioPage() {
   const navigateTo = useStudio((st) => st.navigateTo);
   const navigateParent = useStudio((st) => st.navigateParent);
   const zoomLabel = useStudio((st) => st.zoomLabel);
+  const guidedOn = useGuided((g) => g.activeLesson !== null);
+  const guideStep = useGuided((g) =>
+    g.activeLesson && g.phase !== "done" ? (g.activeLesson.steps[g.stepIndex] ?? null) : null
+  );
 
   const elements = project?.elements ?? [];
   const sel = elements.find((e) => e.id === selectedId);
@@ -720,16 +726,28 @@ export function StudioPage() {
                 <div className="dock__group">
                   <span className="eyebrow">{g.title}</span>
                 </div>
-                {visible.map((td) => (
-                  <ToolButton
-                    key={td.t}
-                    icon={GROUP_ICONS[td.t]}
-                    label={td.label}
-                    keyHint={td.key}
-                    active={tool === td.t}
-                    onClick={() => setTool(td.t)}
-                  />
-                ))}
+                {visible.map((td) => {
+                  // Guided mode: visually de-emphasize tools the step doesn't need.
+                  const dim =
+                    guidedOn && !!guideStep && !["select", "move", ...guideStep.allowTools].includes(td.t);
+                  const btn = (
+                    <ToolButton
+                      key={td.t}
+                      icon={GROUP_ICONS[td.t]}
+                      label={td.label}
+                      keyHint={td.key}
+                      active={tool === td.t}
+                      onClick={() => setTool(td.t)}
+                    />
+                  );
+                  return dim ? (
+                    <div key={td.t} className="tool-dim">
+                      {btn}
+                    </div>
+                  ) : (
+                    btn
+                  );
+                })}
               </div>
             );
           })}
@@ -814,9 +832,11 @@ export function StudioPage() {
                 : `${s.placeHint} (${tool} → ${ctxName})`}
           </span>
           <span className="viewport-info__spacer" />
+          <ModePill />
           <span className="viewport-info__zoom mono">{zoomLabel}</span>
         </div>
         <Canvas />
+        {guidedOn && <GuidedBar />}
         <ActionToast />
         <ExerciseStrip onOpen={() => setAiOpen(true)} />
         {aiOpen && (

@@ -1,6 +1,8 @@
 import { useUi } from "@/store/ui";
 import { useStudio } from "@/store/studio";
 import { useStudy, lessonKey } from "@/store/study";
+import { hasSeenWelcome } from "@/store/onboarding";
+import { WelcomePage } from "./Welcome";
 import { STR } from "@/i18n";
 import { courses, totalLessons } from "@/data/content";
 import { Compass, Box, BookOpen, Sparkles, ArrowRight, Play, Plus } from "lucide-react";
@@ -39,6 +41,10 @@ export function StartPage() {
   const currentCourse = courses.find((c) =>
     c.lessons.some((l) => completed[lessonKey(c.id, l.id)])
   );
+
+  // First launch: show the Welcome introduction instead of the dashboard.
+  // Re-checked every render so returning to Start after onboarding is normal.
+  if (!hasSeenWelcome()) return <WelcomePage />;
 
   const navCards: NavCard[] = [
     {

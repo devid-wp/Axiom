@@ -8,6 +8,7 @@ import { courses } from "@/data/content";
 import { useStudy, lessonKey } from "@/store/study";
 import { useStudio } from "@/store/studio";
 import { useUi } from "@/store/ui";
+import { useGuided } from "@/guided/store";
 import { breadcrumbs, elementName } from "@/studio/domain";
 import { useTutor } from "./service";
 
@@ -194,6 +195,10 @@ export function buildStudioContext(exercise: AiExercise | null): TutorContext {
     : (elements.find((e) => e.id === current.parentId) ?? null);
   const siblings = elements.filter((e) => (e.parentId ?? null) === (current?.id ?? null));
 
+  const gs = useGuided.getState();
+  const gLesson = gs.activeLesson;
+  const gStep = gLesson?.steps[gs.stepIndex];
+
   return {
     scope: "studio",
     lang,
@@ -216,6 +221,16 @@ export function buildStudioContext(exercise: AiExercise | null): TutorContext {
     parent: parent ? { id: parent.id, type: parent.kind } : null,
     children: siblings.map((e) => ({ id: e.id, type: e.kind, x: Math.round(e.x), y: Math.round(e.y), w: Math.round(e.w), h: Math.round(e.h) })),
     breadcrumbs: breadcrumbs(elements, contextId).map((e) => ({ id: e.id, type: e.kind })),
+    guided:
+      gLesson && gStep
+        ? {
+            lesson: gLesson.id,
+            step: gStep.id,
+            stepIndex: gs.stepIndex,
+            stepsTotal: gLesson.steps.length,
+            instruction: gStep.instruction[lang],
+          }
+        : null,
     availableActions: [
       "create_element",
       "move_element",

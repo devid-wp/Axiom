@@ -1,3 +1,5 @@
+import "./content.css";
+
 interface Props {
   text: string;
   meta: string;

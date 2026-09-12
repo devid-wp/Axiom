@@ -1,0 +1,120 @@
+/* AXIOM — GuidedBar + mode pill. Bottom instruction strip for Guided Mode.
+   Visual layer only: all state lives in useGuided, all mutations in useStudio. */
+
+.guided-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--line-soft);
+  min-height: 64px;
+}
+
+.guided-bar__step {
+  align-self: center;
+  font-size: 12px;
+  color: var(--accent);
+  white-space: nowrap;
+  min-width: 64px;
+  text-align: center;
+}
+
+.guided-bar__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+}
+
+.guided-bar__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--tx2);
+}
+
+.guided-bar__instruction {
+  font-size: 13px;
+  color: var(--tx);
+}
+
+.guided-bar__ctx {
+  font-size: 11px;
+  color: var(--tx3);
+}
+
+.guided-bar__feedback {
+  font-size: 12px;
+  color: var(--accent-tx);
+}
+
+.guided-bar__error {
+  font-size: 12px;
+  color: #e5484d;
+}
+
+.guided-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.guided-bar__btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--tx2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.guided-bar__btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--tx);
+}
+
+.guided-bar__btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.guided-bar__btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.guided-bar__badge {
+  align-self: center;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.mode-pill {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  font-size: 11px;
+}
+
+.mode-pill__btn {
+  padding: 3px 10px;
+  background: transparent;
+  border: 0;
+  color: var(--tx3);
+  cursor: pointer;
+}
+
+.mode-pill__btn--on {
+  background: var(--accent-dim, rgba(124, 92, 252, 0.16));
+  color: var(--accent-tx);
+}
+
+.tool-dim {
+  opacity: 0.35;
+}

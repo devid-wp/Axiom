@@ -261,6 +261,15 @@ export interface StudioContext {
   children: Array<{ id: string; type: ElementKind; x: number; y: number; w: number; h: number }>;
   /** Breadcrumb chain from the project root to the current context. */
   breadcrumbs: Array<{ id: string; type: ElementKind }>;
+  /** Guided-learning state for the tutor (null = free mode). Read-only:
+      validation never depends on the model. */
+  guided: {
+    lesson: string;
+    step: string;
+    stepIndex: number;
+    stepsTotal: number;
+    instruction: string;
+  } | null;
   /** Action kinds the model may emit in this context. */
   availableActions: AiActionKind[];
 }

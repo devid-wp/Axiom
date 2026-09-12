@@ -156,7 +156,7 @@ export function StudyPage() {
                         key={l.id}
                         num={String(li + 1).padStart(2, "0")}
                         text={l.title[lang]}
-                        dur={l.duration.replace(" min", "m")}
+                        dur={l.duration}
                         active={lessonIdx === li}
                         done={completed[lessonKey(c.id, l.id)]}
                         onClick={() => selectLesson(li)}
