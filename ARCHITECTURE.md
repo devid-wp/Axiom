@@ -73,3 +73,10 @@ Slint `animate` with `ease-in-out` / `spring` where possible; Rust-side `in-out-
 4. Local save/load + polishing
 
 Do not build AutoCAD/Blender — one canvas, 4 elements, selection/move/resize/props/save is the bar for visible prototype.
+
+## Decision 2026-09-11: WEB primary, NATIVE frozen
+- Primary: `web/` (Vite + React 18 + Zustand) + `package.json` / `vite.config.ts` / `dist/`. Run: `./run.sh web`, build: `./run.sh build`.
+- Frozen: `src/` (Rust), `ui/` (Slint), `Cargo.toml`, `Cargo.lock`, `build.rs`, `target/`. No active dev, no packaging, `./run.sh native` refuses with a message.
+- `legacy_web/` stays as-is (old Tauri reference). Do not resurrect without un-freeze decision.
+- Reason: single source of truth, AI tutor lives only in web (`web/src/ai/`), avoid Studio domain drift (4 kinds native vs 10 kinds web).
+- Un-freeze rule: explicit decision + port web Studio/AI state back, otherwise keep frozen.

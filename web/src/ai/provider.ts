@@ -6,6 +6,8 @@
 
 import type { Lang } from "@/store/ui";
 import type { AiAction, AiExercisePayload, TutorChunk, TutorContext, TutorProvider, TutorRequest, TutorResult } from "./types";
+import type { ElementKind } from "@/studio/types";
+import { canContain } from "@/studio/domain";
 import { TutorUnavailableError } from "./types";
 import { pickChallenge, challengePayload } from "./challenges";
 
@@ -17,43 +19,84 @@ export class HttpTutorProvider implements TutorProvider {
   name = "axiom-api";
   private base = "/api/ai/status";
 
-  async chat(req: TutorRequest): Promise<TutorResult> {
-    let res: Response;
+  /** Client-side OpenRouter key (Vite env). The server path (/api/ai/tutor,
+      key held server-side) is preferred whenever it is configured. */
+  private clientKey(): string {
     try {
-      res = await fetch("/api/ai/tutor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: req.messages, lang: req.lang }),
-      });
+      return (import.meta as any).env?.VITE_AI_API_KEY || "";
     } catch {
-      throw new TutorUnavailableError("network");
+      return "";
     }
-    if (res.status === 503) throw new TutorUnavailableError("unconfigured");
-    if (!res.ok) throw new Error(`tutor http ${res.status}`);
-    const data = (await res.json()) as { reply?: string };
-    if (!data.reply) throw new Error("empty tutor reply");
-    return { reply: data.reply };
   }
 
-  async *chatStream(req: TutorRequest): AsyncGenerator<TutorChunk> {
-    let res: Response;
+  private clientModel(): string {
     try {
-      res = await fetch("/api/ai/tutor", {
+      return (import.meta as any).env?.VITE_AI_MODEL || "openrouter/auto";
+    } catch {
+      return "openrouter/auto";
+    }
+  }
+
+  private async post(
+    req: TutorRequest,
+    stream: boolean
+  ): Promise<{ reply: string } | AsyncGenerator<TutorChunk>> {
+    const key = this.clientKey();
+    // Prefer our own server endpoint (secret stays server-side). Only talk
+    // to OpenRouter directly when the server is unconfigured but a client
+    // key exists.
+    let useDirect = false;
+    if (key) {
+      try {
+        const st = await fetch(this.base);
+        const data = (await st.json()) as { configured?: boolean };
+        useDirect = data.configured !== true;
+      } catch {
+        useDirect = true;
+      }
+    }
+    if (!useDirect) {
+      const res = await fetch("/api/ai/tutor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: req.messages, lang: req.lang, stream: true }),
+        body: JSON.stringify({ messages: req.messages, lang: req.lang, stream }),
       });
-    } catch {
-      throw new TutorUnavailableError("network");
+      if (res.status === 503) throw new TutorUnavailableError("unconfigured");
+      if (!res.ok) throw new Error(`tutor http ${res.status}`);
+      if (stream) return this.readSse(res);
+      const data = (await res.json()) as { reply?: string };
+      if (!data.reply) throw new Error("empty tutor reply");
+      return { reply: data.reply };
     }
-    if (res.status === 503) throw new TutorUnavailableError("unconfigured");
-    if (!res.ok) throw new Error(`tutor http ${res.status}`);
-    if (!res.body) throw new Error("no response body");
+    // Direct OpenRouter call (OpenAI chat-completions shape).
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: this.clientModel(),
+        messages: req.messages,
+        temperature: 0.4,
+        max_tokens: 800,
+        stream,
+      }),
+    });
+    if (!res.ok) throw new Error(`openrouter http ${res.status}`);
+    if (stream) return this.readOpenRouterStream(res);
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const reply = data.choices?.[0]?.message?.content ?? "";
+    if (!reply) throw new Error("empty tutor reply");
+    return { reply };
+  }
 
+  /** SSE dialect of our own /api/ai/tutor endpoint ({ delta } frames). */
+  private async *readSse(res: Response): AsyncGenerator<TutorChunk> {
+    if (!res.body) throw new Error("no response body");
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -70,9 +113,7 @@ export class HttpTutorProvider implements TutorProvider {
             }
             try {
               const parsed = JSON.parse(data) as { delta?: string };
-              if (parsed.delta) {
-                yield { type: "text", delta: parsed.delta };
-              }
+              if (parsed.delta) yield { type: "text", delta: parsed.delta };
             } catch {
               /* skip malformed chunks */
             }
@@ -85,7 +126,73 @@ export class HttpTutorProvider implements TutorProvider {
     }
   }
 
+  /** SSE dialect of OpenRouter/OpenAI (choices[0].delta.content frames). */
+  private async *readOpenRouterStream(res: Response): AsyncGenerator<TutorChunk> {
+    if (!res.body) throw new Error("no response body");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6).trim();
+            if (data === "[DONE]") {
+              yield { type: "done" };
+              return;
+            }
+            try {
+              const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
+              const delta = parsed.choices?.[0]?.delta?.content;
+              if (delta) yield { type: "text", delta };
+            } catch {
+              /* skip malformed chunks */
+            }
+          }
+        }
+      }
+      yield { type: "done" };
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  async chat(req: TutorRequest): Promise<TutorResult> {
+    let out: { reply: string } | AsyncGenerator<TutorChunk>;
+    try {
+      out = await this.post(req, false);
+    } catch (e) {
+      if (e instanceof TutorUnavailableError) throw e;
+      throw new TutorUnavailableError("network");
+    }
+    if (Symbol.asyncIterator in Object(out)) throw new Error("unexpected stream");
+    return out as TutorResult;
+  }
+
+  async *chatStream(req: TutorRequest): AsyncGenerator<TutorChunk> {
+    let out: { reply: string } | AsyncGenerator<TutorChunk>;
+    try {
+      out = await this.post(req, true);
+    } catch (e) {
+      if (e instanceof TutorUnavailableError) throw e;
+      throw new TutorUnavailableError("network");
+    }
+    if (Symbol.asyncIterator in Object(out)) {
+      yield* out as AsyncGenerator<TutorChunk>;
+      return;
+    }
+    // Server ignored the stream flag and answered in one shot.
+    yield { type: "text", delta: (out as { reply: string }).reply };
+    yield { type: "done" };
+  }
+
   async reachable(): Promise<boolean> {
+    if (this.clientKey()) return true;
     try {
       const res = await fetch(this.base);
       if (!res.ok) return false;
@@ -449,6 +556,138 @@ function studioConsultation(
   return proposeFor(program.key, lang);
 }
 
+/* --- hierarchical studio commands (mock/offline engine) ------------------ */
+/* Understands the Project → Building → Floor → Room/Corridor → Wall/Door/
+   Window (+Roof) model and the user's current editing context. Emits the
+   same validated AiAction shapes the live model emits; execution, validation
+   and confirmation all happen downstream in ai/actions.ts + ai/service.ts. */
+
+type HierCtx = Extract<TutorContext, { scope: "studio" }>;
+
+function normHierKind(word: string): ElementKind | null {
+  const w = word.toLowerCase();
+  if (/building|здани/.test(w)) return "building";
+  if (/floor|этаж/.test(w)) return "floor";
+  if (/rooms?|комнат/.test(w)) return "room";
+  if (/corridor|коридор/.test(w)) return "corridor";
+  if (/walls?|стен/.test(w)) return "wall";
+  if (/doors?|двер/.test(w)) return "door";
+  if (/windows?|ок[но]н/.test(w)) return "window";
+  if (/roof|крыш/.test(w)) return "roof";
+  return null;
+}
+
+const KIND_WORD = "(building|floor|rooms?|corridor|walls?|doors?|windows?|roof|здани\\w*|этаж\\w*|комнат\\w*|коридор\\w*|стен\\w*|двер\\w*|ок[но]\\w*|крыш\\w*)";
+
+function hierarchicalCommand(ctx: HierCtx, q: string, lang: Lang): TutorReply | null {
+  const cur = ctx.currentElement;
+
+  /* navigate up */
+  if (has(q, /go (back|up)|navigate up|up one level|back to (the )?parent|вернись|назад|на уровень вверх|поднимись/)) {
+    if (!cur)
+      return {
+        reply: k(lang,
+          "You are already at the project root — there is nowhere higher to go. Create a building to start the hierarchy.",
+          "Вы уже в корне проекта — выше идти некуда. Создайте здание, чтобы начать иерархию."),
+      };
+    return {
+      reply: k(lang,
+        `Moved up from the ${cur.type} to its parent level.`,
+        `Поднялся из «${cur.type}» на уровень родителя.`),
+      actions: [{ kind: "enter_element", target: { up: true } }],
+    };
+  }
+
+  /* enter / open a container */
+  const openM = q.match(new RegExp("(?:open|enter|go (?:in)?to|открой|войди(?: в)?|зайди(?: в)?)\\s+(?:the\\s+)?" + KIND_WORD));
+  if (openM) {
+    const kind = normHierKind(openM[1]);
+    if (kind) {
+      const inScope = ctx.children.some((c) => c.type === kind);
+      if (!inScope && !(ctx.selected && ctx.selected.kind === kind)) {
+        return {
+          reply: k(lang,
+            `There is no ${kind} in the current ${cur ? cur.type : "project root"} to open. Create one first.`,
+            `В текущем ${cur ? `«${cur.type}»` : "корне проекта"} нет «${kind}», который можно открыть. Сначала создайте его.`),
+        };
+      }
+      return {
+        reply: k(lang,
+          `Opened the ${kind} — you are now editing inside it.`,
+          `Открыл «${kind}» — теперь вы редактируете внутри него.`),
+        actions: [{ kind: "enter_element", target: ctx.selected?.kind === kind ? { selected: true } : { kind } }],
+      };
+    }
+  }
+
+  /* rotate */
+  if (has(q, /rotat|поверн|вращай|крути|разверни/)) {
+    const degM = q.match(/(\d+)\s*(?:°|deg(?:rees?)?|градус\w*)/);
+    const deg = degM ? Number(degM[1]) : 90;
+    const dir = has(q, /counter|против|влево|налево|left|anticlock/) ? -deg : deg;
+    return {
+      reply: k(lang,
+        `Rotated the selected element by ${dir}°.`,
+        `Повернул выбранный элемент на ${dir}°.`),
+      actions: [{ kind: "rotate_element", target: { selected: true }, degrees: dir }],
+    };
+  }
+
+  /* create <kind> [N by M meters] */
+  const createM = q.match(new RegExp("(?:create|add|place|make|build|построй|создай|добавь|поставь|сделай)\\s+(?:a\\s+|an\\s+)?" + KIND_WORD));
+  if (createM) {
+    const kind = normHierKind(createM[1]);
+    if (!kind) return null;
+    const parentKind = cur ? cur.type : null;
+    if (!canContain(parentKind, kind)) {
+      const where = cur ? `inside a ${cur.type}` : "at the project root";
+      const hint = kind === "building"
+        ? k(lang, "Buildings are created at the project root — go back up first.", "Здания создаются в корне проекта — сначала поднимитесь наверх.")
+        : kind === "floor" || kind === "roof"
+          ? k(lang, "Open a building first, then add it there.", "Сначала откройте здание, затем добавьте туда.")
+          : kind === "room" || kind === "corridor"
+            ? k(lang, "Open a floor first, then add it there.", "Сначала откройте этаж, затем добавьте туда.")
+            : k(lang, "Open a room or corridor first, then add it there.", "Сначала откройте комнату или коридор, затем добавьте туда.");
+      return {
+        reply: k(lang,
+          `A ${kind} cannot live ${where}. ${hint}`,
+          `«${kind}» не может находиться ${cur ? `внутри «${cur.type}»` : "в корне проекта"}. ${hint}`),
+      };
+    }
+    const dm = q.match(/(\d+)\s*(?:by|на|х|x|\*)\s*(\d+)\s*(?:meter|meters|m\b|м|метра|метров)/);
+    const action: AiAction = { kind: "create_element", elementType: kind };
+    if (dm) {
+      const w = Math.round((Number(dm[1]) * 40) / 8) * 8;
+      const h = Math.round((Number(dm[2]) * 40) / 8) * 8;
+      (action as Extract<AiAction, { kind: "create_element" }>).w = w;
+      (action as Extract<AiAction, { kind: "create_element" }>).h = h;
+    }
+    // Doors/windows get a sensible spot relative to the current container:
+    // "south/bottom" → bottom edge centre, otherwise the right edge.
+    if ((kind === "door" || kind === "window") && cur) {
+      const dw = kind === "door" ? 40 : 80;
+      const south = has(q, /south|bottom|низ|юг|снизу|внизу/);
+      const ax = south
+        ? Math.round((cur.x + cur.w / 2 - dw / 2) / 8) * 8
+        : Math.round((cur.x + cur.w - dw - 8) / 8) * 8;
+      const ay = south
+        ? Math.round((cur.y + cur.h - 18) / 8) * 8
+        : Math.round((cur.y + cur.h / 2 - 5) / 8) * 8;
+      (action as Extract<AiAction, { kind: "create_element" }>).x = ax;
+      (action as Extract<AiAction, { kind: "create_element" }>).y = ay;
+    }
+    const sizeTxt = dm ? ` ${dm[1]}×${dm[2]} m` : "";
+    return {
+      reply: k(lang,
+        `Done — created a${sizeTxt} ${kind} in the current ${cur ? cur.type : "project"}.`,
+        `Готово — создал${sizeTxt} «${kind}» в текущем ${cur ? `«${cur.type}»` : "проекте"}.`),
+      actions: [action],
+    };
+  }
+
+  return null;
+}
+
 function tutorAnswer(ctx: TutorContext | null, question: string, lang: Lang, userTurns: string[] = []): TutorReply {
   const q = question.toLowerCase();
   const isStudy = !ctx || ctx.scope === "study";
@@ -475,6 +714,9 @@ function tutorAnswer(ctx: TutorContext | null, question: string, lang: Lang, use
 
   /* ---- studio action engine ---------------------------------------------- */
   const cctx = ctx as Extract<TutorContext, { scope: "studio" }>;
+
+  const hier = hierarchicalCommand(cctx, q, lang);
+  if (hier) return hier;
 
   if (has(q, /check my work|проверь мою работу|проверь|оцени мою работу/)) {
     return { reply: reviewWork(cctx, lang) };
@@ -688,10 +930,11 @@ function studyAnswer(ctx: Extract<TutorContext, { scope: "study" }>, question: s
     "Каждый поставленный элемент — это решение о том, как здание стоит и используется.");
 
   /* --- quiz answer checking ----------------------------------------------- */
-  if (ctx.quizState?.active && /^\s*[12]\s*$/.test(question.trim())) {
+  if (ctx.quizState?.active && /^\s*\d+\s*$/.test(question.trim())) {
     const quiz = ctx.quiz;
-    if (quiz) {
+    if (quiz && quiz.opts.length > 0) {
       const picked = parseInt(question.trim()) - 1;
+      if (picked >= 0 && picked < quiz.opts.length) {
       const isCorrect = picked === quiz.correct;
       const correctText = quiz.opts[quiz.correct] ?? "";
       const pickedText = quiz.opts[picked] ?? "";
@@ -713,17 +956,20 @@ function studyAnswer(ctx: Extract<TutorContext, { scope: "study" }>, question: s
               : "архитектура — это система, где каждая часть зависит от других. Правильное решение одной вещи меняет всё остальное."}\n\nХотите, чтобы я объяснил это проще?`),
         };
       }
+      }
     }
   }
 
   /* --- quiz presentation (no active quiz yet) ----------------------------- */
   if (has(q, /quiz|провер|тест|check me|test me/)) {
     const quiz = ctx.quiz;
-    if (quiz) {
+    if (quiz && quiz.opts.length > 0) {
+      const list = quiz.opts.map((o, i) => `${i + 1}. ${o}`).join("\n");
+      const n = quiz.opts.length;
       return {
         reply: kk(
-          `Let's check your understanding.\n\n${quiz.q}\n\n1. ${quiz.opts[0] ?? ""}\n2. ${quiz.opts[1] ?? ""}\n\nReply with 1 or 2.`,
-          `Проверим ваше понимание.\n\n${quiz.q}\n\n1. ${quiz.opts[0] ?? ""}\n2. ${quiz.opts[1] ?? ""}\n\nОтветьте 1 или 2.`),
+          `Let's check your understanding.\n\n${quiz.q}\n\n${list}\n\nReply with 1–${n}.`,
+          `Проверим ваше понимание.\n\n${quiz.q}\n\n${list}\n\nОтветьте 1–${n}.`),
       };
     }
   }

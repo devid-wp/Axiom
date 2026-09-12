@@ -14,8 +14,14 @@ export const GRID_STEP = 44;
 export const MAX_HISTORY = 100;
 
 export const ELEMENT_DEFAULTS: Record<ElementKind, { w: number; h: number }> = {
-  wall: { w: 240, h: 14 },
+  building: { w: 400, h: 280 },
+  floor: { w: 360, h: 240 },
   room: { w: 180, h: 130 },
+  corridor: { w: 240, h: 64 },
+  wall: { w: 240, h: 14 },
+  door: { w: 40, h: 10 },
+  window: { w: 80, h: 10 },
+  roof: { w: 220, h: 14 },
   column: { w: 34, h: 34 },
   beam: { w: 170, h: 14 },
 };
@@ -23,15 +29,27 @@ export const ELEMENT_DEFAULTS: Record<ElementKind, { w: number; h: number }> = {
 export const TOOL_ORDER: ElementKind[] = ["wall", "room", "column", "beam"];
 
 export const KIND_LABELS: Record<ElementKind, string> = {
-  wall: "Wall",
+  building: "Building",
+  floor: "Floor",
   room: "Room",
+  corridor: "Corridor",
+  wall: "Wall",
+  door: "Door",
+  window: "Window",
+  roof: "Roof",
   column: "Column",
   beam: "Beam",
 };
 
 export const KIND_DISPLAY: Record<ElementKind, string> = {
-  wall: "WALL",
+  building: "BUILDING",
+  floor: "FLOOR",
   room: "ROOM",
+  corridor: "CORRIDOR",
+  wall: "WALL",
+  door: "DOOR",
+  window: "WINDOW",
+  roof: "ROOF",
   column: "COLUMN",
   beam: "BEAM",
 };
@@ -53,8 +71,14 @@ export const MATERIAL_COLORS: Record<Material, string> = {
 };
 
 export const THICKNESS: Record<ElementKind, string> = {
-  wall: "0.25m",
+  building: "—",
+  floor: "0.25m",
   room: "0.20m",
+  corridor: "0.20m",
+  wall: "0.25m",
+  door: "0.10m",
+  window: "0.10m",
+  roof: "0.30m",
   column: "0.40m",
   beam: "0.30m",
 };
@@ -209,10 +233,81 @@ export function elementsEqual(a: StudioElement[], b: StudioElement[]): boolean {
       x.x !== y.x ||
       x.y !== y.y ||
       x.w !== y.w ||
-      x.h !== y.h
+      x.h !== y.h ||
+      (x.parentId ?? null) !== (y.parentId ?? null) ||
+      (x.rotation ?? 0) !== (y.rotation ?? 0)
     ) {
       return false;
     }
   }
   return true;
+}
+
+/* ------------------------------------------------- hierarchy ------------- */
+/* Project (root, parentId null)
+     └── building → floor → room | corridor → wall | door | window
+     └── building → roof
+   Legacy kinds (column, beam) may live at root or inside a container. */
+
+const ROOT_KEY = "__root__";
+
+/** Which kinds may be created inside a given parent (null = project root). */
+export const ALLOWED_CHILDREN: Record<string, ElementKind[]> = {
+  [ROOT_KEY]: ["building", "column", "beam"],
+  building: ["floor", "roof"],
+  floor: ["room", "corridor", "column", "beam"],
+  room: ["wall", "door", "window", "column", "beam"],
+  corridor: ["wall", "door", "window"],
+  wall: [],
+  door: [],
+  window: [],
+  roof: [],
+  column: [],
+  beam: [],
+};
+
+export function allowedChildrenOf(parentKind: ElementKind | null): ElementKind[] {
+  return ALLOWED_CHILDREN[parentKind ?? ROOT_KEY] ?? [];
+}
+
+export function canContain(parentKind: ElementKind | null, child: ElementKind): boolean {
+  return allowedChildrenOf(parentKind).includes(child);
+}
+
+/** Kinds the user can enter (have their own editing context). */
+export function isContainer(kind: ElementKind): boolean {
+  return allowedChildrenOf(kind).length > 0;
+}
+
+export function childrenOf(elements: StudioElement[], parentId: string | null): StudioElement[] {
+  return elements.filter((e) => (e.parentId ?? null) === parentId);
+}
+
+/** Breadcrumb chain from the project root down to (and including) the given id. */
+export function breadcrumbs(elements: StudioElement[], id: string | null): StudioElement[] {
+  const chain: StudioElement[] = [];
+  let cur = id == null ? null : (elements.find((e) => e.id === id) ?? null);
+  const guard = new Set<string>();
+  while (cur && !guard.has(cur.id)) {
+    guard.add(cur.id);
+    chain.unshift(cur);
+    cur = cur.parentId == null ? null : (elements.find((e) => e.id === cur!.parentId) ?? null);
+  }
+  return chain;
+}
+
+/** The element plus every descendant id (for cascading delete/duplicate). */
+export function subtreeIds(elements: StudioElement[], rootId: string): string[] {
+  const out: string[] = [];
+  const walk = (id: string) => {
+    out.push(id);
+    for (const c of elements) if ((c.parentId ?? null) === id) walk(c.id);
+  };
+  walk(rootId);
+  return out;
+}
+
+export function normalizeRotation(deg: number): number {
+  if (!Number.isFinite(deg)) return 0;
+  return ((deg % 360) + 360) % 360;
 }

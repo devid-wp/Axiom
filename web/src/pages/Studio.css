@@ -470,3 +470,116 @@
   color: var(--accent-tx);
   background: var(--accent-wash);
 }
+
+/* ============ BREADCRUMBS (architectural context) ============ */
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 32px;
+  padding: 2px var(--sp-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.crumbs__seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.crumbs__sep {
+  color: var(--tx4);
+  font-size: var(--fs-meta);
+  padding: 0 2px;
+}
+.crumbs__item {
+  font-size: var(--fs-ctl);
+  color: var(--tx3);
+  padding: 3px 8px;
+  border-radius: var(--r-xs);
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+}
+.crumbs__item:hover {
+  color: var(--tx);
+  border-color: var(--line);
+}
+.crumbs__item--on {
+  color: var(--accent-tx);
+  background: var(--accent-wash);
+  border-color: var(--accent-line);
+}
+.crumbs__spacer {
+  flex: 1;
+  min-width: 8px;
+}
+.crumbs__up {
+  font-size: var(--fs-micro);
+  color: var(--tx3);
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  flex-shrink: 0;
+}
+.crumbs__up:hover {
+  color: var(--accent-tx);
+  border-color: var(--accent);
+}
+
+/* ============ HIERARCHY TREE ============ */
+.hier-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.hier-row__guide {
+  color: var(--tx4);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.hier-row__main {
+  flex: 1;
+  min-width: 0;
+}
+.hier-row__open {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--tx4);
+  border-radius: var(--r-xs);
+}
+.hier-row__open:hover {
+  color: var(--accent-tx);
+  background: var(--accent-wash);
+}
+.hier-row__open--on {
+  color: var(--accent-tx);
+}
+
+.tool-glyph {
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* ============ BOTTOM AI PANEL ============ */
+.studio-ai-panel {
+  flex-shrink: 0;
+  height: 340px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.studio-ai-panel .ai {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}

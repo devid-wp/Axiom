@@ -1,3 +1,5 @@
+# FROZEN 2026-09-11: native (Rust/Slint) is archived. Primary platform is web/ (Vite/React).
+# See ARCHITECTURE.md "WEB primary, NATIVE frozen". Do not extend src/ ui/ without un-freeze.
 [package]
 name = "axiom"
 version = "0.1.0"

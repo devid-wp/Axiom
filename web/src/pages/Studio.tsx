@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUi } from "@/store/ui";
-import { useStudio } from "@/store/studio";
+import { useStudio, visibleElements } from "@/store/studio";
 import { useTutor } from "@/ai/service";
 import { STR } from "@/i18n";
 import { AiChat } from "@/components/ai/AiChat";
-import { Caption } from "@/components/Caption";
 import { ToolButton } from "@/components/ToolButton";
 import { TreeRow } from "@/components/TreeRow";
 import { Inspector } from "@/components/Inspector";
@@ -15,38 +14,89 @@ import {
   MATERIAL_LABELS,
   SHEET_H,
   SHEET_W,
+  allowedChildrenOf,
+  breadcrumbs,
+  childrenOf,
   elementName,
+  isContainer,
 } from "@/studio/domain";
-import type { Element as StudioElement, Tool } from "@/studio/types";
-import { Sparkles, MousePointer2, Move, StretchHorizontal, LayoutGrid, Columns3, Plus } from "lucide-react";
+import type { Element as StudioElement, ElementKind, Tool } from "@/studio/types";
+import { Sparkles, MousePointer2, Move } from "lucide-react";
 import "./Studio.css";
 
 const ZOOM_STEP = 0.15;
 
 interface ToolDef {
   t: Tool;
-  icon: React.ReactNode;
   label: string;
   key?: string;
 }
 
 const NAV_TOOLS: ToolDef[] = [
-  { t: "select", icon: <MousePointer2 size={14} />, label: "Select", key: "V" },
-  { t: "move", icon: <Move size={14} />, label: "Move", key: "M" },
+  { t: "select", label: "Select", key: "V" },
+  { t: "move", label: "Move", key: "M" },
 ];
 
-const BUILD_TOOLS: ToolDef[] = [
-  { t: "wall", icon: <StretchHorizontal size={14} />, label: "Wall", key: "W" },
-  { t: "room", icon: <LayoutGrid size={14} />, label: "Room", key: "R" },
-  { t: "column", icon: <Columns3 size={14} />, label: "Column", key: "C" },
-  { t: "beam", icon: <StretchHorizontal size={14} />, label: "Beam", key: "B" },
+/* Build tools grouped by hierarchy level: structure → space → openings. */
+const TOOL_GROUPS: Array<{ title: string; tools: ToolDef[] }> = [
+  {
+    title: "Structure",
+    tools: [
+      { t: "building", label: "Building", key: "G" },
+      { t: "floor", label: "Floor", key: "F" },
+      { t: "roof", label: "Roof", key: "U" },
+    ],
+  },
+  {
+    title: "Space",
+    tools: [
+      { t: "room", label: "Room", key: "R" },
+      { t: "corridor", label: "Corridor", key: "T" },
+    ],
+  },
+  {
+    title: "Openings",
+    tools: [
+      { t: "wall", label: "Wall", key: "W" },
+      { t: "door", label: "Door", key: "D" },
+      { t: "window", label: "Window", key: "N" },
+    ],
+  },
+  {
+    title: "Legacy",
+    tools: [
+      { t: "column", label: "Column", key: "C" },
+      { t: "beam", label: "Beam", key: "B" },
+    ],
+  },
 ];
 
 const ELEMENT_LABELS: Record<StudioElement["kind"], string> = {
+  building: "BLDG",
+  floor: "FLOOR",
   room: "ROOM",
+  corridor: "CORR",
   wall: "WALL",
+  door: "DOOR",
+  window: "WIN",
+  roof: "ROOF",
   column: "▮",
   beam: "BEAM",
+};
+
+const GROUP_ICONS: Record<string, React.ReactNode> = {
+  select: <MousePointer2 size={14} />,
+  move: <Move size={14} />,
+  building: <span className="tool-glyph">▣</span>,
+  floor: <span className="tool-glyph">▤</span>,
+  roof: <span className="tool-glyph">△</span>,
+  room: <span className="tool-glyph">▭</span>,
+  corridor: <span className="tool-glyph">▬</span>,
+  wall: <span className="tool-glyph">—</span>,
+  door: <span className="tool-glyph">🚪</span>,
+  window: <span className="tool-glyph">⊞</span>,
+  column: <span className="tool-glyph">⬢</span>,
+  beam: <span className="tool-glyph">━</span>,
 };
 
 function Ruler({ width, zoom }: { width: number; zoom: number }) {
@@ -68,6 +118,71 @@ function Ruler({ width, zoom }: { width: number; zoom: number }) {
   );
 }
 
+/* ---------------------------------- tree --------------------------------- */
+
+function TreeNode({
+  elements,
+  parentId,
+  depth,
+  project,
+  selectedId,
+  pathIds,
+  onSelect,
+  onEnter,
+}: {
+  elements: StudioElement[];
+  parentId: string | null;
+  depth: number;
+  project: NonNullable<ReturnType<typeof useStudio.getState>["projects"][number]> | undefined;
+  selectedId: string;
+  pathIds: Set<string>;
+  onSelect: (id: string) => void;
+  onEnter: (id: string) => void;
+}) {
+  if (!project) return null;
+  return (
+    <>
+      {childrenOf(elements, parentId).map((el) => (
+        <div key={el.id}>
+          <div className="hier-row" style={{ paddingLeft: 8 + depth * 14 }}>
+            {depth > 0 && <span className="hier-row__guide">└</span>}
+            <div className="hier-row__main">
+              <TreeRow
+                name={elementName(project, el.id)}
+                kind={KIND_LABELS[el.kind]}
+                dot={MATERIAL_COLORS[el.material]}
+                selected={el.id === selectedId}
+                onClick={() => onSelect(el.id)}
+              />
+            </div>
+            {isContainer(el.kind) && (
+              <button
+                className={pathIds.has(el.id) ? "hier-row__open mono hier-row__open--on" : "hier-row__open mono"}
+                title={pathIds.has(el.id) ? "Currently open" : `Open ${elementName(project, el.id)}`}
+                onClick={() => onEnter(el.id)}
+              >
+                {pathIds.has(el.id) ? "●" : "→"}
+              </button>
+            )}
+          </div>
+          <TreeNode
+            elements={elements}
+            parentId={el.id}
+            depth={depth + 1}
+            project={project}
+            selectedId={selectedId}
+            pathIds={pathIds}
+            onSelect={onSelect}
+            onEnter={onEnter}
+          />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/* --------------------------------- canvas -------------------------------- */
+
 function Canvas() {
   const canvasClick = useStudio((s) => s.canvasClick);
   const hover = useStudio((s) => s.hover);
@@ -78,7 +193,9 @@ function Canvas() {
   const release = useStudio((s) => s.release);
   const tool = useStudio((s) => s.tool);
   const selectedId = useStudio((s) => s.selectedId);
-  const elements = useStudio((s) => s.projects[s.currentIdx]?.elements ?? []);
+  const elements = useStudio((s) => visibleElements(s));
+  const contextId = useStudio((s) => s.contextId);
+  const project = useStudio((s) => s.projects[s.currentIdx]);
   const flash = useTutor((s) => s.lastAction);
   const zoom = useStudio((s) => s.zoom);
   const panX = useStudio((s) => s.panX);
@@ -154,7 +271,7 @@ function Canvas() {
     }
   };
 
-  const onPointerUp = (e: React.PointerEvent) => {
+  const onPointerUp = () => {
     if (_panning) {
       endPan();
     }
@@ -184,7 +301,9 @@ function Canvas() {
     []
   );
 
-  const buildTool = tool === "wall" || tool === "room" || tool === "column" || tool === "beam";
+  const buildTool = tool !== "select" && tool !== "move";
+  const ctxEl = contextId ? project?.elements.find((e) => e.id === contextId) : undefined;
+  const ctxName = ctxEl && project ? elementName(project, ctxEl.id) : "Project";
 
   return (
     <div
@@ -223,7 +342,7 @@ function Canvas() {
             <line key={`v${x}`} x1={x} y1={0} x2={x} y2={SHEET_H} stroke="var(--grid)" />
           ))}
           {hLines.map((y) => (
-            <line key={`h${y}`} x1={0} y1={y} x2={SHEET_W} y2={y} stroke="var(--grid)" />
+            <line key={`h${y}`} x1={0} y1={y} x2={SHEET_W} y2={SHEET_H} stroke="var(--grid)" />
           ))}
           <line x1={SHEET_W / 2} y1={0} x2={SHEET_W / 2} y2={SHEET_H} stroke="var(--grid-strong)" />
           <line x1={0} y1={SHEET_H / 2} x2={SHEET_W} y2={SHEET_H / 2} stroke="var(--grid-strong)" />
@@ -244,7 +363,9 @@ function Canvas() {
               textAnchor="middle"
               dominantBaseline="central"
             >
-              empty sheet — pick a build tool, click to place
+              {ctxEl
+                ? `empty ${ctxEl.kind} — pick a build tool, click to place inside ${ctxName}`
+                : "empty project — create a Building to start"}
             </text>
           )}
 
@@ -276,61 +397,68 @@ function Canvas() {
             )
           )}
 
-          {elements.map((el) => (
-            <g key={el.id} className="el" onClick={(e) => e.stopPropagation()}>
-              <rect
-                className={el.id === selectedId ? "el__body el__body--selected" : "el__body"}
-                x={el.x}
-                y={el.y}
-                width={el.w}
-                height={el.h}
-                rx={1}
-                fill={MATERIAL_COLORS[el.material]}
-                stroke={el.id === selectedId ? "var(--accent)" : "var(--el-edge)"}
-                onPointerDown={(e) => grab(e, pressMove, el.id)}
-                onPointerMove={(e) => {
-                  const p = toLogical(e);
-                  dragMove(el.id, p.x, p.y);
-                }}
-                onPointerUp={release}
-                onPointerCancel={release}
-              />
-              <rect
-                className="el__lit"
-                x={el.x}
-                y={el.y}
-                width={el.w}
-                height={1}
-                fill="var(--el-highlight)"
-              />
-              <text
-                className={el.kind === "room" ? "el__label el__label--room" : "el__label"}
-                x={el.x + el.w / 2}
-                y={el.y + el.h / 2}
-                textAnchor="middle"
-                dominantBaseline="central"
-              >
-                {ELEMENT_LABELS[el.kind]}
-              </text>
-              {el.id === selectedId && (
-                <rect
-                  className="el__handle"
-                  x={el.x + el.w - 11}
-                  y={el.y + el.h - 11}
-                  width={11}
-                  height={11}
-                  rx={2}
-                  onPointerDown={(e) => grab(e, pressSize, el.id)}
-                  onPointerMove={(e) => {
-                    const p = toLogical(e);
-                    dragSize(el.id, p.x, p.y);
-                  }}
-                  onPointerUp={release}
-                  onPointerCancel={release}
-                />
-              )}
-            </g>
-          ))}
+          {elements.map((el) => {
+            const cx = el.x + el.w / 2;
+            const cy = el.y + el.h / 2;
+            const rot = el.rotation ?? 0;
+            return (
+              <g key={el.id} className="el" onClick={(e) => e.stopPropagation()}>
+                <g transform={rot ? `rotate(${rot} ${cx} ${cy})` : undefined}>
+                  <rect
+                    className={el.id === selectedId ? "el__body el__body--selected" : "el__body"}
+                    x={el.x}
+                    y={el.y}
+                    width={el.w}
+                    height={el.h}
+                    rx={1}
+                    fill={MATERIAL_COLORS[el.material]}
+                    stroke={el.id === selectedId ? "var(--accent)" : "var(--el-edge)"}
+                    onPointerDown={(e) => grab(e, pressMove, el.id)}
+                    onPointerMove={(e) => {
+                      const p = toLogical(e);
+                      dragMove(el.id, p.x, p.y);
+                    }}
+                    onPointerUp={release}
+                    onPointerCancel={release}
+                  />
+                  <rect
+                    className="el__lit"
+                    x={el.x}
+                    y={el.y}
+                    width={el.w}
+                    height={1}
+                    fill="var(--el-highlight)"
+                  />
+                  <text
+                    className={el.kind === "room" || el.kind === "floor" ? "el__label el__label--room" : "el__label"}
+                    x={cx}
+                    y={cy}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                  >
+                    {ELEMENT_LABELS[el.kind]}
+                  </text>
+                </g>
+                {el.id === selectedId && (
+                  <rect
+                    className="el__handle"
+                    x={el.x + el.w - 11}
+                    y={el.y + el.h - 11}
+                    width={11}
+                    height={11}
+                    rx={2}
+                    onPointerDown={(e) => grab(e, pressSize, el.id)}
+                    onPointerMove={(e) => {
+                      const p = toLogical(e);
+                      dragSize(el.id, p.x, p.y);
+                    }}
+                    onPointerUp={release}
+                    onPointerCancel={release}
+                  />
+                )}
+              </g>
+            );
+          })}
 
           {(flash?.ids.length ?? 0) > 0 &&
             elements
@@ -352,7 +480,7 @@ function Canvas() {
   );
 }
 
-/** Compact challenge strip shown just above the tutor drawer. */
+/** Compact challenge strip shown just above the AI panel. */
 function ExerciseStrip({ onOpen }: { onOpen: () => void }) {
   const s = STR[useUi.getState().lang];
   const exercise = useTutor((st) => st.exercise);
@@ -361,7 +489,7 @@ function ExerciseStrip({ onOpen }: { onOpen: () => void }) {
     <div className="studio-exercise" onClick={onOpen}>
       <span className="studio-exercise__label mono">{s.aiChallenge}</span>
       <span className="studio-exercise__title">{exercise.title}</span>
-      <span className="studio-exercise__arrow mono">{"\u2197"}</span>
+      <span className="studio-exercise__arrow mono">{"↗"}</span>
     </div>
   );
 }
@@ -374,7 +502,7 @@ function ActionToast() {
   return (
     <div className="action-toast">
       <span className="action-toast__body">
-        {"\u2713"} {flash.summary} — {s.aiDone}
+        {"✓"} {flash.summary} — {s.aiDone}
       </span>
       <button className="action-toast__undo mono" onClick={() => useStudio.getState().undo()}>
         {s.aiUndo}
@@ -390,26 +518,46 @@ export function StudioPage() {
   const setTool = useStudio((st) => st.setTool);
   const deselect = useStudio((st) => st.deselect);
   const selectedId = useStudio((st) => st.selectedId);
+  const contextId = useStudio((st) => st.contextId);
   const project = useStudio((st) => st.projects[st.currentIdx]);
   const select = useStudio((st) => st.select);
+  const enter = useStudio((st) => st.enter);
+  const navigateTo = useStudio((st) => st.navigateTo);
+  const navigateParent = useStudio((st) => st.navigateParent);
+  const zoomLabel = useStudio((st) => st.zoomLabel);
 
   const elements = project?.elements ?? [];
   const sel = elements.find((e) => e.id === selectedId);
+  const ctxEl = contextId ? elements.find((e) => e.id === contextId) : undefined;
+  const crumbs = project ? breadcrumbs(elements, contextId) : [];
+  const allowed = useMemo(
+    () => allowedChildrenOf(ctxEl?.kind ?? null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ctxEl?.kind, ctxEl?.id]
+  );
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiTab, setAiTab] = useState<"chat" | "challenge">("chat");
   const aiOpenRef = useRef(aiOpen);
   useEffect(() => {
     aiOpenRef.current = aiOpen;
   }, [aiOpen]);
 
-  const aiRequest = useUi((s) => s.aiRequest);
+  const aiRequest = useUi((st) => st.aiRequest);
   useEffect(() => {
     if (aiRequest > 0) {
       const u = useUi.getState();
       u.consumeAiRequest();
+      setAiOpen(true);
     }
   }, [aiRequest]);
   const exercise = useTutor((st) => st.exercise);
+
+  /* If the active tool is not allowed in the new context, fall back to select. */
+  useEffect(() => {
+    const st = useStudio.getState();
+    if (st.tool !== "select" && st.tool !== "move" && !(allowed as string[]).includes(st.tool)) {
+      st.setTool("select");
+    }
+  }, [allowed]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -450,16 +598,6 @@ export function StudioPage() {
         st.paste();
         return;
       }
-      if (mod && k === "[") {
-        e.preventDefault();
-        if (st.selectedId) st.moveBackward(st.selectedId);
-        return;
-      }
-      if (mod && k === "]") {
-        e.preventDefault();
-        if (st.selectedId) st.moveForward(st.selectedId);
-        return;
-      }
       if (mod && (k === "=" || k === "+")) {
         e.preventDefault();
         st.zoomBy(ZOOM_STEP);
@@ -476,17 +614,44 @@ export function StudioPage() {
         return;
       }
 
+      if (e.shiftKey && k === "r" && st.selectedId) {
+        e.preventDefault();
+        st.rotate(st.selectedId, 15);
+        return;
+      }
       const toolMap: Record<string, Tool> = {
         v: "select",
         m: "move",
-        w: "wall",
+        g: "building",
+        f: "floor",
+        u: "roof",
         r: "room",
+        t: "corridor",
+        w: "wall",
+        d: "door",
+        n: "window",
         c: "column",
         b: "beam",
       };
       const toolHit = toolMap[k];
       if (toolHit && !mod) {
-        st.setTool(toolHit);
+        // Respect containment: only switch to tools allowed in this context.
+        if (
+          toolHit === "select" ||
+          toolHit === "move" ||
+          allowedChildrenOf(
+            st.contextId ? (st.projects[st.currentIdx]?.elements.find((x) => x.id === st.contextId)?.kind ?? null) : null
+          ).includes(toolHit as ElementKind)
+        ) {
+          st.setTool(toolHit);
+        }
+        return;
+      }
+      if (e.key === "Enter") {
+        if (st.selectedId) {
+          const el = st.projects[st.currentIdx]?.elements.find((x) => x.id === st.selectedId);
+          if (el && isContainer(el.kind)) st.enter(el.id);
+        }
         return;
       }
       if (e.key === "Escape") {
@@ -495,6 +660,12 @@ export function StudioPage() {
           return;
         }
         st.deselect();
+        return;
+      }
+      if (e.key === "Backspace" && (e.metaKey || e.ctrlKey)) {
+        // Cmd/Ctrl+Backspace = go up one level
+        e.preventDefault();
+        st.navigateParent();
         return;
       }
       const selId = st.selectedId;
@@ -521,6 +692,8 @@ export function StudioPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const ctxName = ctxEl && project ? elementName(project, ctxEl.id) : "Project";
+
   return (
     <div className="page studio">
       <aside className="studio-dock">
@@ -531,48 +704,58 @@ export function StudioPage() {
           {NAV_TOOLS.map((td) => (
             <ToolButton
               key={td.t}
-              icon={td.icon}
+              icon={GROUP_ICONS[td.t]}
               label={td.label}
               keyHint={td.key}
               active={tool === td.t}
               onClick={() => setTool(td.t)}
             />
           ))}
-          <div className="dock__gap" />
-          <div className="dock__group">
-            <span className="eyebrow">Build</span>
-          </div>
-          {BUILD_TOOLS.map((td) => (
-            <ToolButton
-              key={td.t}
-              icon={td.icon}
-              label={td.label}
-              keyHint={td.key}
-              active={tool === td.t}
-              onClick={() => setTool(td.t)}
-            />
-          ))}
+          {TOOL_GROUPS.map((g) => {
+            const visible = g.tools.filter((td) => (allowed as string[]).includes(td.t));
+            if (visible.length === 0) return null;
+            return (
+              <div key={g.title}>
+                <div className="dock__gap" />
+                <div className="dock__group">
+                  <span className="eyebrow">{g.title}</span>
+                </div>
+                {visible.map((td) => (
+                  <ToolButton
+                    key={td.t}
+                    icon={GROUP_ICONS[td.t]}
+                    label={td.label}
+                    keyHint={td.key}
+                    active={tool === td.t}
+                    onClick={() => setTool(td.t)}
+                  />
+                ))}
+              </div>
+            );
+          })}
           <div className="dock__gap" />
           <div className="dock__layers-head">
-            <span className="eyebrow">Layers</span>
+            <span className="eyebrow">Hierarchy</span>
             <span className="dock__spacer" />
             <span className="dock__count mono">{elements.length}</span>
             <button className="dock__clear mono" onClick={deselect}>
               clear
             </button>
           </div>
-          {elements.length === 0 && <div className="dock__empty mono">— empty sheet —</div>}
+          {elements.length === 0 && <div className="dock__empty mono">— empty project —</div>}
           <div className="dock__tree">
-            {elements.map((el) => (
-              <TreeRow
-                key={el.id}
-                name={elementName(project!, el.id)}
-                kind={KIND_LABELS[el.kind]}
-                dot={MATERIAL_COLORS[el.material]}
-                selected={el.id === selectedId}
-                onClick={() => select(el.id)}
+            {project && (
+              <TreeNode
+                elements={elements}
+                parentId={null}
+                depth={0}
+                project={project}
+                selectedId={selectedId}
+                pathIds={new Set(crumbs.map((c) => c.id))}
+                onSelect={select}
+                onEnter={enter}
               />
-            ))}
+            )}
           </div>
           <div className="dock__fill" />
           <div className="dock__foot mono">sheet A-101 · 900×600</div>
@@ -580,43 +763,70 @@ export function StudioPage() {
       </aside>
 
       <section className="studio-viewport">
-        <div className="viewport-info">
-          <span className="viewport-info__tool mono">
-            {tool.toUpperCase()}
-          </span>
-          <span className="viewport-info__hint mono">
-            {tool === "select"
-              ? s.selectHint
-              : tool === "move"
-                ? s.moveHint
-                : `${s.placeHint} (${tool})`}
-          </span>
-          <span className="viewport-info__spacer" />
+        <nav className="crumbs" aria-label="Architectural context">
+          <button
+            className={contextId === null ? "crumbs__item mono crumbs__item--on" : "crumbs__item mono"}
+            onClick={() => navigateTo(null)}
+            title="Project root"
+          >
+            {project?.name ?? "Project"}
+          </button>
+          {crumbs.map((c) => (
+            <span key={c.id} className="crumbs__seg">
+              <span className="crumbs__sep">/</span>
+              <button
+                className={
+                  c.id === contextId ? "crumbs__item mono crumbs__item--on" : "crumbs__item mono"
+                }
+                onClick={() => navigateTo(c.id)}
+              >
+                {project ? elementName(project, c.id) : c.kind}
+              </button>
+            </span>
+          ))}
+          <span className="crumbs__spacer" />
+          {contextId !== null && (
+            <button className="crumbs__up mono" onClick={navigateParent} title="Up one level">
+              ↑ up
+            </button>
+          )}
           <span className={selectedId ? "viewport-info__sel mono viewport-info__sel--on" : "viewport-info__sel mono"}>
-            {sel ? `${elementName(project!, sel.id)} · ${MATERIAL_LABELS[sel.material]}` : s.noSelectionHint}
+            {sel && project ? `${elementName(project, sel.id)} · ${MATERIAL_LABELS[sel.material]}` : s.noSelectionHint}
           </span>
-          <span className="viewport-info__zoom mono">{useStudio.getState().zoomLabel}</span>
           <button
             className={`viewport-ai ${aiOpen ? "viewport-ai--on" : ""}`}
-            onClick={() => {
-              setAiOpen((v) => !v);
-              if (!aiOpen) setAiTab("chat");
-            }}
+            onClick={() => setAiOpen((v) => !v)}
             title={s.aiAskCta}
           >
             <Sparkles size={13} />
             <span className="viewport-ai__label mono">{s.aiAskAi}</span>
           </button>
+        </nav>
+        <div className="viewport-info">
+          <span className="viewport-info__tool mono">
+            {tool.toUpperCase()} · {ctxName.toUpperCase()}
+          </span>
+          <span className="viewport-info__hint mono">
+            {tool === "select"
+              ? "click to inspect · Enter opens · double-click a row to open"
+              : tool === "move"
+                ? s.moveHint
+                : `${s.placeHint} (${tool} → ${ctxName})`}
+          </span>
+          <span className="viewport-info__spacer" />
+          <span className="viewport-info__zoom mono">{zoomLabel}</span>
         </div>
         <Canvas />
         <ActionToast />
         <ExerciseStrip onOpen={() => setAiOpen(true)} />
-        <div className={`studio-ai-drawer ${aiOpen ? "studio-ai-drawer--open" : ""}`} aria-hidden={!aiOpen}>
-          <AiChat scope="studio" onClose={() => setAiOpen(false)} />
-        </div>
+        {aiOpen && (
+          <div className="studio-ai-panel">
+            <AiChat scope="studio" onClose={() => setAiOpen(false)} />
+          </div>
+        )}
       </section>
 
-      <aside className={`studio-inspector ${aiOpen ? "studio-inspector--ai" : ""}`}>
+      <aside className="studio-inspector">
         <div className={`inspector-ai-toggle ${aiOpen || exercise ? "inspector-ai-toggle--active" : ""}`}>
           <Sparkles size={12} />
           <span className="inspector-ai-toggle__label mono">
@@ -624,11 +834,7 @@ export function StudioPage() {
           </span>
           <button
             className="inspector-ai-toggle__btn"
-            onClick={() => {
-              const next = !aiOpen;
-              setAiOpen(next);
-              if (next) setAiTab("chat");
-            }}
+            onClick={() => setAiOpen((v) => !v)}
             title={s.aiAskCta}
           >
             {aiOpen ? "×" : "+"}

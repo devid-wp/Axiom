@@ -46,9 +46,11 @@ export type AiActionKind =
   | "delete_element"
   | "move_element"
   | "resize_element"
+  | "rotate_element"
   | "set_material"
   | "duplicate_element"
   | "select_element"
+  | "enter_element"
   | "clear_selection"
   | "clear_project";
 
@@ -62,6 +64,8 @@ export interface AiTarget {
   last?: boolean;
   /** the currently selected element */
   selected?: boolean;
+  /** the parent of the current editing context (for navigating up) */
+  up?: boolean;
 }
 
 export interface AiCreateElement {
@@ -72,6 +76,12 @@ export interface AiCreateElement {
   y?: number;
   w?: number;
   h?: number;
+  /**
+   * Where to create: "current" (default) = inside the user's current editing
+   * context, or an element id to create inside that element. The containment
+   * rules are enforced at execution — illegal placements are skipped safely.
+   */
+  parent?: string;
 }
 export interface AiDeleteElement {
   kind: "delete_element";
@@ -89,6 +99,12 @@ export interface AiResizeElement {
   w?: number;
   h?: number;
 }
+export interface AiRotateElement {
+  kind: "rotate_element";
+  target?: AiTarget;
+  /** degrees to rotate clockwise (negative = counter-clockwise) */
+  degrees?: number;
+}
 export interface AiSetMaterial {
   kind: "set_material";
   target?: AiTarget;
@@ -104,6 +120,11 @@ export interface AiSelectElement {
   kind: "select_element";
   target?: AiTarget;
 }
+export interface AiEnterElement {
+  /** Open a container (building/floor/room/…) so it becomes the editing context. */
+  kind: "enter_element";
+  target?: AiTarget;
+}
 export interface AiClearSelection {
   kind: "clear_selection";
 }
@@ -116,9 +137,11 @@ export type AiAction =
   | AiDeleteElement
   | AiMoveElement
   | AiResizeElement
+  | AiRotateElement
   | AiSetMaterial
   | AiDuplicateElement
   | AiSelectElement
+  | AiEnterElement
   | AiClearSelection
   | AiClearProject;
 
@@ -178,6 +201,8 @@ export interface SelectedElInfo {
   w: number;
   h: number;
   material: Material;
+  parentId: string | null;
+  rotation: number;
 }
 
 /** Compact geometry used by the tutor to reason / review / place. Capped. */
@@ -230,6 +255,14 @@ export interface StudioContext {
   selected: SelectedElInfo | null;
   exercise: AiExercise | null;
   elements: StudioElementBrief[];
+  /** The element whose children are currently being edited (null = project root). */
+  currentElement: { id: string; type: ElementKind; x: number; y: number; w: number; h: number } | null;
+  parent: { id: string; type: ElementKind } | null;
+  children: Array<{ id: string; type: ElementKind; x: number; y: number; w: number; h: number }>;
+  /** Breadcrumb chain from the project root to the current context. */
+  breadcrumbs: Array<{ id: string; type: ElementKind }>;
+  /** Action kinds the model may emit in this context. */
+  availableActions: AiActionKind[];
 }
 
 export type TutorContext = StudyContext | StudioContext;

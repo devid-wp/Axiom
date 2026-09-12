@@ -8,18 +8,22 @@ import { courses } from "@/data/content";
 import { useStudy, lessonKey } from "@/store/study";
 import { useStudio } from "@/store/studio";
 import { useUi } from "@/store/ui";
-import { elementName } from "@/studio/domain";
+import { breadcrumbs, elementName } from "@/studio/domain";
 import { useTutor } from "./service";
 
 const ACTIONS_INSTRUCTION =
   "If the student asks you to BUILD, CHANGE or CREATE something in Studio, " +
   "finish your reply with exactly one block:\n" +
-  "<axiom-actions>[{\"kind\":\"create_element\",\"elementType\":\"column\",\"x\":120,\"y\":180}, ...]</axiom-actions>\n" +
-  "Allowed kinds ONLY: create_element, move_element, resize_element, set_material, " +
-  "duplicate_element, select_element, clear_selection, delete_element, clear_project.\n" +
+  "<axiom-actions>[{\"kind\":\"create_element\",\"elementType\":\"room\",\"w\":200,\"h\":160}, ...]</axiom-actions>\n" +
+  "Allowed kinds ONLY: create_element, move_element, resize_element, rotate_element, set_material, " +
+  "duplicate_element, select_element, enter_element, clear_selection, delete_element, clear_project.\n" +
   "Rules:\n" +
-  "- elementType in [wall, room, column, beam]; material in [concrete, brick, glass, timber, steel].\n" +
-  "- Coordinates in px, sheet is 900x600, snap to multiples of 8. You may omit coordinates to auto-place.\n" +
+  "- elementType in [building, floor, room, corridor, wall, door, window, roof, column, beam]; material in [concrete, brick, glass, timber, steel].\n" +
+  "- Hierarchy (strict): project root holds building (+ legacy column/beam); building holds floor, roof; floor holds room, corridor; room/corridor hold wall, door, window.\n" +
+  "- Create actions land in CONTEXT.currentElement by default — that is what phrases like 'here', 'in this room', 'on the right' refer to. Omit parent, or use \"parent\":\"current\".\n" +
+  "- To build at a deeper level, first emit {\"kind\":\"enter_element\",\"target\":{...}} for the container, then create inside it on the next turn — or create the container and tell the student to open it.\n" +
+  "- Coordinates in px, sheet is 900x600, snap to multiples of 8. You may omit coordinates to auto-place. w/h in px (1m = 40px).\n" +
+  "- rotate_element takes degrees clockwise, e.g. {\"kind\":\"rotate_element\",\"degrees\":90}.\n" +
   "- target may be omitted (=selected, else most recent), or use {\"kind\":...}/{\"last\":true}/{\"selected\":true}.\n" +
   "- Never attempt ids you cannot know. Delete/clear_project require the student's confirmation in the app.\n" +
   "- Max 12 actions per block. Never output anything outside the allowed schema.\n" +
@@ -162,7 +166,7 @@ const MAX_CTX_ELEMENTS = 60;
 
 export function buildStudioContext(exercise: AiExercise | null): TutorContext {
   const lang = useUi.getState().lang;
-  const { projects, currentIdx, selectedId } = useStudio.getState();
+  const { projects, currentIdx, selectedId, contextId } = useStudio.getState();
   const proj = projects[currentIdx];
   const elements = proj?.elements ?? [];
   const counts: Record<string, number> = {};
@@ -179,8 +183,16 @@ export function buildStudioContext(exercise: AiExercise | null): TutorContext {
         w: Math.round(sel.w),
         h: Math.round(sel.h),
         material: sel.material,
+        parentId: sel.parentId ?? null,
+        rotation: sel.rotation ?? 0,
       }
     : null;
+
+  const current = contextId == null ? null : (elements.find((e) => e.id === contextId) ?? null);
+  const parent = current?.parentId == null
+    ? null
+    : (elements.find((e) => e.id === current.parentId) ?? null);
+  const siblings = elements.filter((e) => (e.parentId ?? null) === (current?.id ?? null));
 
   return {
     scope: "studio",
@@ -198,5 +210,24 @@ export function buildStudioContext(exercise: AiExercise | null): TutorContext {
       height: Math.round(e.h),
       material: e.material,
     })),
+    currentElement: current
+      ? { id: current.id, type: current.kind, x: Math.round(current.x), y: Math.round(current.y), w: Math.round(current.w), h: Math.round(current.h) }
+      : null,
+    parent: parent ? { id: parent.id, type: parent.kind } : null,
+    children: siblings.map((e) => ({ id: e.id, type: e.kind, x: Math.round(e.x), y: Math.round(e.y), w: Math.round(e.w), h: Math.round(e.h) })),
+    breadcrumbs: breadcrumbs(elements, contextId).map((e) => ({ id: e.id, type: e.kind })),
+    availableActions: [
+      "create_element",
+      "move_element",
+      "resize_element",
+      "rotate_element",
+      "set_material",
+      "duplicate_element",
+      "select_element",
+      "enter_element",
+      "clear_selection",
+      "delete_element",
+      "clear_project",
+    ],
   };
 }

@@ -4,11 +4,15 @@ import { useStudio } from "@/store/studio";
 import { STR } from "@/i18n";
 import {
   KIND_DISPLAY,
+  KIND_LABELS,
   MATERIAL_COLORS,
   MATERIAL_LABELS,
-  thicknessFor,
-  meters,
+  allowedChildrenOf,
+  childrenOf,
   elementName,
+  isContainer,
+  meters,
+  thicknessFor,
 } from "@/studio/domain";
 import type { Material } from "@/studio/types";
 import { SegTab } from "./SegTab";
@@ -30,12 +34,17 @@ export function Inspector() {
   const selectedId = useStudio((st) => st.selectedId);
   const nudge = useStudio((st) => st.nudge);
   const sizeStep = useStudio((st) => st.sizeStep);
+  const rotate = useStudio((st) => st.rotate);
   const applyMaterial = useStudio((st) => st.applyMaterial);
   const duplicate = useStudio((st) => st.duplicate);
   const remove = useStudio((st) => st.remove);
+  const enter = useStudio((st) => st.enter);
 
   const sel = project?.elements.find((e) => e.id === selectedId);
   const name = sel && project ? elementName(project, sel.id) : "";
+  const parent = sel?.parentId ? project?.elements.find((e) => e.id === sel.parentId) : undefined;
+  const kids = sel && project ? childrenOf(project.elements, sel.id) : [];
+  const canOpen = sel ? isContainer(sel.kind) : false;
 
   return (
     <div className="inspector">
@@ -67,7 +76,23 @@ export function Inspector() {
             <div className="inspector__meta mono">
               {KIND_DISPLAY[sel.kind]} · {MATERIAL_LABELS[sel.material]}
             </div>
+            <div className="inspector__meta mono">
+              {parent && project ? `in ${elementName(project, parent.id)}` : "at project root"}
+              {kids.length > 0 ? ` · ${kids.length} inside` : ""}
+            </div>
           </div>
+          {canOpen && (
+            <InspectorSection title="CONTEXT">
+              <div className="inspector__actions">
+                <Button onClick={() => enter(sel.id)}>
+                  Open {KIND_LABELS[sel.kind]} →
+                </Button>
+              </div>
+              <div className="inspector__steps mono">
+                holds: {allowedChildrenOf(sel.kind).join(", ") || "—"}
+              </div>
+            </InspectorSection>
+          )}
           <InspectorSection title={s.transform}>
             <PropRow label="X" value={meters(sel.x)} />
             <PropRow label="Y" value={meters(sel.y)} />
@@ -89,6 +114,7 @@ export function Inspector() {
             <PropRow label="length" value={meters(sel.w)} />
             <PropRow label="width" value={meters(sel.h)} />
             <PropRow label="thick" value={thicknessFor(sel.kind)} />
+            <PropRow label="rot" value={`${Math.round(sel.rotation ?? 0)}°`} />
             <NumberInput
               label="W"
               value={meters(sel.w)}
@@ -100,6 +126,12 @@ export function Inspector() {
               value={meters(sel.h)}
               onDec={() => sizeStep(sel.id, 0, -16)}
               onInc={() => sizeStep(sel.id, 0, 16)}
+            />
+            <NumberInput
+              label="⟳"
+              value={`${Math.round(sel.rotation ?? 0)}°`}
+              onDec={() => rotate(sel.id, -15)}
+              onInc={() => rotate(sel.id, 15)}
             />
           </InspectorSection>
           <InspectorSection title={s.actionsGroup}>

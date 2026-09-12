@@ -6,6 +6,7 @@ import { courses } from "@/data/content";
 import { useTutor, startExerciseFromMessage } from "@/ai/service";
 import { studySuggestions, studioSuggestions, type Suggestion } from "@/ai/suggestions";
 import { buildStudioContext, buildStudyContext } from "@/ai/prompts";
+import { breadcrumbs, elementName } from "@/studio/domain";
 import { STR } from "@/i18n";
 import { Caption } from "@/components/Caption";
 import { Sparkles, ArrowUp, RotateCcw } from "lucide-react";
@@ -19,15 +20,17 @@ export interface AiChatProps {
 function useScopeCtx(scope: AiChatProps["scope"]) {
   const lang = useUi((s) => s.lang);
   const selectedId = useStudio((s) => s.selectedId);
+  const contextId = useStudio((s) => s.contextId);
   const project = useStudio((s) => s.projects[s.currentIdx]);
   const exercise = useTutor((s) => s.exercise);
   return useMemo(() => {
     if (scope === "study") return buildStudyContext();
     void lang;
     void selectedId;
+    void contextId;
     void project;
     return buildStudioContext(exercise);
-  }, [scope, lang, selectedId, project, exercise]);
+  }, [scope, lang, selectedId, contextId, project, exercise]);
 }
 
 export function AiChat({ scope, onClose }: AiChatProps) {
@@ -54,6 +57,7 @@ export function AiChat({ scope, onClose }: AiChatProps) {
 
   const thinking = session.status === "thinking";
   const streaming = session.status === "streaming";
+  const busy = thinking || streaming;
   const modeLabel = mode === "live" ? s.aiLive : mode === "mock" ? s.aiOffline : "";
 
   useEffect(() => {
@@ -63,7 +67,7 @@ export function AiChat({ scope, onClose }: AiChatProps) {
 
   const submit = (text: string) => {
     const q = text.trim();
-    if (!q || thinking) return;
+    if (!q || busy) return;
     setInput("");
     void ask(scope, q);
   };
@@ -77,6 +81,10 @@ export function AiChat({ scope, onClose }: AiChatProps) {
     const st = useStudio.getState();
     const proj = st.projects[st.currentIdx];
     ctxLabel = proj?.name ? `${s.aiScopeStudio} · ${proj.name}` : s.aiScopeStudio;
+    if (proj) {
+      const chain = breadcrumbs(proj.elements, st.contextId).map((e) => elementName(proj, e.id));
+      if (chain.length > 0) ctxLabel += ` / ${chain.join(" / ")}`;
+    }
     ctxMeta = `${proj?.elements.length ?? 0} ${s.elements}`;
     if (st.selectedId && proj?.elements.some((e) => e.id === st.selectedId)) ctxMeta += ` · 1 ${s.ctxSel}`;
   } else {
@@ -259,7 +267,7 @@ export function AiChat({ scope, onClose }: AiChatProps) {
         <textarea
           className="ai__input"
           value={input}
-          disabled={thinking}
+          disabled={busy}
           placeholder={s.aiPlaceholder}
           rows={1}
           onChange={(e) => setInput(e.target.value)}
@@ -273,7 +281,7 @@ export function AiChat({ scope, onClose }: AiChatProps) {
         <button
           className="ai__send"
           type="submit"
-          disabled={thinking || !input.trim()}
+          disabled={busy || !input.trim()}
           aria-label={s.aiSend}
         >
           <ArrowUp size={14} />

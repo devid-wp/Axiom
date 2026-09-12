@@ -66,12 +66,9 @@ native_deps() {
 }
 
 cmd_native() {
-  ensure_pkg cargo || die "Rust toolchain not found. Install rustup: https://rustup.rs"
-  native_deps
-  info "Building native AXIOM (Slint)…"
-  cargo build
-  ok "Run: ./run.sh native — or the binary is at target/debug/axiom"
-  exec cargo run
+  warn "Native build (Rust/Slint) is FROZEN — primary platform is web (Vite/React)."
+  warn "If you really need it: git log -- src/ ui/ ; cargo build"
+  die "Aborted: native is frozen."
 }
 
 cmd_web() {
@@ -87,16 +84,12 @@ cmd_web() {
 
 cmd_build() {
   ensure_pkg node || die "Node.js not found."
-  info "Building web bundle → dist/"
+  info "Building web bundle → dist/ (PRIMARY platform)"
   npm install
   npm run build
-  ensure_pkg cargo || die "Rust toolchain not found for native build."
-  native_deps
-  info "Building native release → target/release/axiom"
-  cargo build --release
   ok "Done:"
   ok "  web:    dist/          (static, open in any browser on any OS)"
-  ok "  native: target/release/axiom  (OS-specific binary)"
+  warn "  native: FROZEN (src/ ui/ Cargo.toml) — not built. See ARCHITECTURE.md."
 }
 
 cmd_check() {
@@ -109,24 +102,24 @@ cmd_check() {
 
 case "${1:-}" in
   native|web|build|check) "cmd_${1}" ;;
-  -h|--help|help|"")
+  "") cmd_web ;;
+  -h|--help|help)
     cat <<'EOF'
-AXIOM — run script
+AXIOM — run script (PRIMARY: web, NATIVE FROZEN)
 
 Usage:
-  ./run.sh native   Build & run the native desktop app (Rust/Slint)
-  ./run.sh web      Run the web app (Vite dev server, :5173)
-  ./run.sh build    Build everything (web dist/ + native release binary)
+  ./run.sh web      Run the web app (Vite dev server, :5173) [default]
+  ./run.sh build    Build web dist/ only
   ./run.sh check    Show toolchain status
+  ./run.sh native   FROZEN — refuses to build (src/ ui/ archived, see ARCHITECTURE.md)
 
-Default (no args) is "native". Works on Arch/Debian/macOS; deps are
+Default (no args) is "web". Works on Arch/Debian/macOS; deps are
 auto-installed via pacman/apt/brew when needed.
 
-About macOS: a native binary built on Arch does NOT run on a Mac — the
-friend must build from source there (./run.sh native), or simply open
-the web build (dist/ or npm run dev), which works identically in any
-browser on macOS/Linux/Windows.
+About macOS: just open the web build (dist/ or npm run dev), which works
+identically in any browser on macOS/Linux/Windows. Native (Rust/Slint)
+is FROZEN and not distributed.
 EOF
     ;;
-  *) die "Unknown command: $1 (try: native, web, build, check, help)" ;;
+  *) die "Unknown command: $1 (try: web, build, check, help; native is FROZEN)" ;;
 esac

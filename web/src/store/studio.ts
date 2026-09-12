@@ -2,7 +2,7 @@
    src/main.rs + history/gesture semantics. All ground truth lives here. */
 
 import { create } from "zustand";
-import type { Element as StudioElement, Material, Project, Tool } from "@/studio/types";
+import type { Element as StudioElement, ElementKind, Material, Project, Tool } from "@/studio/types";
 import {
   ELEMENT_DEFAULTS,
   MAX_HISTORY,
@@ -11,13 +11,20 @@ import {
   SHEET_H,
   SHEET_W,
   SNAP,
+  allowedChildrenOf,
+  breadcrumbs,
+  canContain,
+  childrenOf,
   clamp,
   coordStr,
   elementsEqual,
+  isContainer,
   newId,
+  normalizeRotation,
   nowHm,
   snap8,
   snapToElements,
+  subtreeIds,
   type SnapGuide,
 } from "@/studio/domain";
 import { exportJson, loadProjects, saveProjects } from "@/studio/persistence";
@@ -43,6 +50,8 @@ interface StudioState {
   projects: Project[];
   currentIdx: number;
   selectedId: string;
+  /** Editing context: element id whose children are shown, null = project root. */
+  contextId: string | null;
   tool: Tool;
   cursorLabel: string;
   zoomLabel: string;
@@ -64,6 +73,14 @@ interface StudioState {
   deselect: () => void;
   setTool: (tool: Tool) => void;
   canvasClick: (x: number, y: number) => void;
+  /** Create an element of the given kind inside the current context. */
+  createElement: (kind: ElementKind, opts?: { x?: number; y?: number; w?: number; h?: number; material?: Material }) => string | null;
+  /** Open a container element: it becomes the current editing context. */
+  enter: (id: string) => void;
+  /** Navigate the editing context to an element id (or the project root). */
+  navigateTo: (id: string | null) => void;
+  /** Navigate one level up (no-op at the project root). */
+  navigateParent: () => void;
   hover: (x: number, y: number) => void;
   openProject: (idx: number) => void;
   pressMove: (id: string, x: number, y: number) => void;
@@ -74,6 +91,7 @@ interface StudioState {
   nudge: (id: string, dx: number, dy: number) => void;
   sizeStep: (id: string, dw: number, dh: number) => void;
   resize: (id: string, dw: number, dh: number) => void;
+  rotate: (id: string, deg: number) => void;
   applyMaterial: (id: string, m: Material) => void;
   remove: (id: string) => void;
   duplicate: (id: string) => void;
@@ -97,8 +115,34 @@ interface StudioState {
   endPan: () => void;
 }
 
-const NAV_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["select", "move", "layers", "assets"] as Tool[]);
-const BUILD_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["wall", "room", "column", "beam"] as Tool[]);
+const NAV_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["select", "move"]);
+const BUILD_TOOLS: ReadonlySet<Tool> = new Set<Tool>([
+  "building",
+  "floor",
+  "room",
+  "corridor",
+  "wall",
+  "door",
+  "window",
+  "roof",
+  "column",
+  "beam",
+] as Tool[]);
+
+/** Resolve the kind of the current editing context (null = project root). */
+function contextKind(get: () => StudioState): ElementKind | null {
+  const st = get();
+  const ctx = st.contextId;
+  if (ctx == null) return null;
+  return st.projects[st.currentIdx]?.elements.find((e) => e.id === ctx)?.kind ?? null;
+}
+
+/** Siblings visible on the canvas = children of the current context. */
+export function visibleElements(st: Pick<StudioState, "projects" | "currentIdx" | "contextId">): StudioElement[] {
+  const proj = st.projects[st.currentIdx];
+  if (!proj) return [];
+  return childrenOf(proj.elements, st.contextId ?? null);
+}
 
 function pushHistory(get: () => StudioState, set: (p: Partial<StudioState>) => void): void {
   const cur = get().projects[get().currentIdx]?.elements ?? [];
@@ -112,16 +156,21 @@ function pushHistory(get: () => StudioState, set: (p: Partial<StudioState>) => v
 function mutateElement(
   get: () => StudioState,
   set: (p: Partial<StudioState>) => void,
+  id: string,
   fn: (el: StudioElement, proj: Project) => void,
   opts?: { hist?: boolean; save?: boolean; label?: string }
 ): void {
   const idx = get().currentIdx;
   const proj = get().projects[idx];
   if (!proj) return;
+  const target = id || get().selectedId;
+  if (!proj.elements.some((e) => e.id === target)) return;
   if (opts?.hist) pushHistory(get, set);
 
   const copy: Project = { ...proj, elements: proj.elements.map((e) => ({ ...e })) };
-  fn(copy.elements.find((e) => e.id === get().selectedId) ?? copy.elements[0], copy);
+  const el = copy.elements.find((e) => e.id === target);
+  if (!el) return;
+  fn(el, copy);
 
   set({
     projects: get().projects.map((p, i) => (i === idx ? copy : p)),
@@ -143,6 +192,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
   projects: loadProjects(),
   currentIdx: 0,
   selectedId: "",
+  contextId: null,
   tool: "select",
   cursorLabel: "X — · Y —",
   zoomLabel: "100%",
@@ -167,25 +217,39 @@ export const useStudio = create<StudioState>()((set, get) => ({
   setTool: (tool) => set({ tool }),
 
   canvasClick: (x, y) => {
-    const { tool, selectedId } = get();
+    const { tool } = get();
     if (NAV_TOOLS.has(tool)) {
-      if (selectedId) set({ selectedId: "" });
+      if (get().selectedId) set({ selectedId: "" });
       return;
     }
     if (!BUILD_TOOLS.has(tool)) return;
-    const kind = tool as StudioElement["kind"];
-    const { w, h } = ELEMENT_DEFAULTS[kind];
+    get().createElement(tool as ElementKind, { x, y });
+  },
+
+  createElement: (kind, opts) => {
+    const idx = get().currentIdx;
+    const proj = get().projects[idx];
+    if (!proj) return null;
+    const ctxKind = contextKind(get);
+    if (!canContain(ctxKind, kind)) return null;
+    const parent = get().contextId;
+    const { w: dw, h: dh } = ELEMENT_DEFAULTS[kind];
+    const w = snap8(clamp(opts?.w ?? dw, MIN_SIZE, MAX_SIZE));
+    const h = snap8(clamp(opts?.h ?? dh, MIN_SIZE, MAX_SIZE));
+    const x = opts?.x !== undefined ? clamp(opts.x, SNAP, SHEET_W - w - SNAP) : clamp(80, SNAP, SHEET_W - w - SNAP);
+    const y = opts?.y !== undefined ? clamp(opts.y, SNAP, SHEET_H - h - SNAP) : clamp(90, SNAP, SHEET_H - h - SNAP);
     const el: StudioElement = {
       id: newId(),
       kind,
-      x: clamp(x, SNAP, SHEET_W - w - SNAP),
-      y: clamp(y, SNAP, SHEET_H - h - SNAP),
+      x,
+      y,
       w,
       h,
-      material: "concrete",
+      material: opts?.material ?? "concrete",
+      parentId: parent,
+      rotation: 0,
     };
     pushHistory(get, set);
-    const idx = get().currentIdx;
     set({
       projects: get().projects.map((p, i) => (i === idx ? { ...p, elements: [...p.elements, el] } : p)),
       selectedId: el.id,
@@ -194,6 +258,37 @@ export const useStudio = create<StudioState>()((set, get) => ({
     });
     saveProjects(get().projects);
     set({ savedLabel: `Saved ${nowHm()}` });
+    return el.id;
+  },
+
+  enter: (id) => {
+    const proj = get().projects[get().currentIdx];
+    const el = proj?.elements.find((e) => e.id === id);
+    if (!el || !isContainer(el.kind)) return;
+    set({ contextId: id, selectedId: "" });
+  },
+
+  navigateTo: (id) => {
+    if (id === null) {
+      set({ contextId: null, selectedId: "" });
+      return;
+    }
+    const proj = get().projects[get().currentIdx];
+    const el = proj?.elements.find((e) => e.id === id);
+    if (!el) return;
+    // Breadcrumb targets are containers; a leaf target just selects it in
+    // its parent's context.
+    if (isContainer(el.kind)) set({ contextId: id, selectedId: "" });
+    else set({ contextId: el.parentId ?? null, selectedId: id });
+  },
+
+  navigateParent: () => {
+    const st = get();
+    const ctx = st.contextId;
+    if (ctx == null) return;
+    const proj = st.projects[st.currentIdx];
+    const el = proj?.elements.find((e) => e.id === ctx);
+    set({ contextId: el?.parentId ?? null, selectedId: "" });
   },
 
   hover: (x, y) => set({ cursorLabel: coordStr(x, y) }),
@@ -203,6 +298,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
     set({
       currentIdx: idx,
       selectedId: "",
+      contextId: null,
       _hist: [],
       _fut: [],
       undoEnabled: false,
@@ -297,21 +393,19 @@ export const useStudio = create<StudioState>()((set, get) => ({
   },
 
   nudge: (id, dx, dy) =>
-    mutateElement(get, set, (el) => {
+    mutateElement(get, set, id, (el) => {
       el.x = snap8(clamp(el.x + dx, 0, SHEET_W - el.w));
       el.y = snap8(clamp(el.y + dy, 0, SHEET_H - el.h));
     }, { hist: true, save: true }),
 
   sizeStep: (id, dw, dh) =>
-    mutateElement(get, set, (el) => {
+    mutateElement(get, set, id, (el) => {
       el.w = snap8(clamp(el.w + dw, MIN_SIZE, MAX_SIZE));
       el.h = snap8(clamp(el.h + dh, MIN_SIZE, MAX_SIZE));
     }, { hist: true, save: true }),
 
   resize: (id, dw, dh) =>
-    mutateElement(get, set, (el) => {
-      const target = get().projects[get().currentIdx]?.elements.find((e) => e.id === id);
-      if (!target) return;
+    mutateElement(get, set, id, (el) => {
       if (Math.abs(dw) < 60 && Math.abs(dh) < 60 && (dw !== 0 || dh !== 0)) {
         el.w = clamp(el.w + dw, MIN_SIZE, MAX_SIZE);
         el.h = clamp(el.h + dh, MIN_SIZE, MAX_SIZE);
@@ -323,8 +417,13 @@ export const useStudio = create<StudioState>()((set, get) => ({
       el.h = snap8(el.h);
     }, { save: true }),
 
+  rotate: (id, deg) =>
+    mutateElement(get, set, id, (el) => {
+      el.rotation = normalizeRotation((el.rotation ?? 0) + deg);
+    }, { hist: true, save: true }),
+
   applyMaterial: (id, m) =>
-    mutateElement(get, set, (el) => {
+    mutateElement(get, set, id, (el) => {
       el.material = m;
     }, { hist: true, save: true }),
 
@@ -333,12 +432,17 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const proj = get().projects[idx];
     if (!proj || !proj.elements.some((e) => e.id === id)) return;
     pushHistory(get, set);
+    // Cascading delete: the whole subtree goes, and the context can never
+    // point at a removed element.
+    const dead = new Set(subtreeIds(proj.elements, id));
+    const ctx = get().contextId;
     const sel = get().selectedId;
     set({
       projects: get().projects.map((p, i) =>
-        i === idx ? { ...p, elements: p.elements.filter((e) => e.id !== id) } : p
+        i === idx ? { ...p, elements: p.elements.filter((e) => !dead.has(e.id)) } : p
       ),
-      selectedId: sel === id ? "" : sel,
+      selectedId: sel && dead.has(sel) ? "" : sel,
+      contextId: ctx && dead.has(ctx) ? (proj.elements.find((e) => e.id === id)?.parentId ?? null) : ctx,
       undoEnabled: get()._hist.length > 0,
       redoEnabled: false,
     });
@@ -352,12 +456,25 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const src = proj?.elements.find((e) => e.id === id);
     if (!proj || !src) return;
     pushHistory(get, set);
-    const dup: StudioElement = { ...src, id: newId(), x: src.x + 16, y: src.y + 16 };
+    // Deep copy: the whole subtree is cloned with fresh ids so the copy
+    // keeps its internal parent/child structure.
+    const ids = subtreeIds(proj.elements, id);
+    const remap = new Map(ids.map((old) => [old, newId()]));
+    const clones = ids.map((old) => {
+      const o = proj.elements.find((e) => e.id === old)!;
+      return {
+        ...o,
+        id: remap.get(old)!,
+        parentId: o.id === id ? o.parentId : (remap.get(o.parentId ?? "") ?? o.parentId),
+        x: snap8(clamp(o.x + 16, 0, SHEET_W - o.w)),
+        y: snap8(clamp(o.y + 16, 0, SHEET_H - o.h)),
+      };
+    });
     set({
       projects: get().projects.map((p, i) =>
-        i === idx ? { ...p, elements: [...p.elements, dup] } : p
+        i === idx ? { ...p, elements: [...p.elements, ...clones] } : p
       ),
-      selectedId: dup.id,
+      selectedId: remap.get(id)!,
       undoEnabled: get()._hist.length > 0,
       redoEnabled: false,
     });
@@ -379,12 +496,26 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const proj = get().projects[idx];
     if (!proj) return;
     pushHistory(get, set);
-    const pasted = clip.map((el) => ({
-      ...el,
-      id: newId(),
-      x: snap8(clamp(el.x + 16, 0, SHEET_W - el.w)),
-      y: snap8(clamp(el.y + 16, 0, SHEET_H - el.h)),
-    }));
+    const live = new Set(proj.elements.map((e) => e.id));
+    const ctx = get().contextId;
+    const ctxKind = ctx == null ? null : (proj.elements.find((e) => e.id === ctx)?.kind ?? null);
+    const pasted = clip.map((el) => {
+      // Keep the original parent when it still exists and allows this kind;
+      // otherwise drop into the current context when allowed, else the root.
+      const keepParent = el.parentId != null && live.has(el.parentId);
+      const parent = keepParent
+        ? el.parentId
+        : ctxKind !== undefined && canContain(ctxKind, el.kind)
+          ? ctx
+          : null;
+      return {
+        ...el,
+        id: newId(),
+        parentId: parent,
+        x: snap8(clamp(el.x + 16, 0, SHEET_W - el.w)),
+        y: snap8(clamp(el.y + 16, 0, SHEET_H - el.h)),
+      };
+    });
     set({
       projects: get().projects.map((p, i) =>
         i === idx ? { ...p, elements: [...p.elements, ...pasted] } : p
@@ -496,9 +627,11 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const idx = get().currentIdx;
     const sel = get().selectedId;
     const nextSel = prev.some((e) => e.id === sel) ? sel : "";
+    const ctx = get().contextId;
     set({
       projects: get().projects.map((p, i) => (i === idx ? { ...p, elements: prev } : p)),
       selectedId: nextSel,
+      contextId: ctx != null && prev.some((e) => e.id === ctx) ? ctx : null,
       _hist: h.slice(0, -1),
       _fut: [...get()._fut, cur],
       undoEnabled: h.length - 1 > 0,
@@ -516,9 +649,11 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const idx = get().currentIdx;
     const sel = get().selectedId;
     const nextSel = next.some((e) => e.id === sel) ? sel : "";
+    const ctx = get().contextId;
     set({
       projects: get().projects.map((p, i) => (i === idx ? { ...p, elements: next } : p)),
       selectedId: nextSel,
+      contextId: ctx != null && next.some((e) => e.id === ctx) ? ctx : null,
       _fut: f.slice(0, -1),
       _hist: [...get()._hist, cur],
       undoEnabled: true,
@@ -561,6 +696,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
       projects,
       currentIdx: projects.length - 1,
       selectedId: "",
+      contextId: null,
       _hist: [],
       _fut: [],
       undoEnabled: false,

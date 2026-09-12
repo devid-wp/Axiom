@@ -69,20 +69,16 @@ function Reader() {
         </div>
         <div className="reader__quiz-q">{q}</div>
         <div className="reader__quiz-opts">
-          <QuizOpt
-            text={opts[0]}
-            picked={picked === 0}
-            right={lesson.quiz.correct === 0}
-            revealed={revealed}
-            onClick={() => answer(0, lesson.quiz.correct, lessonKey(course.id, lesson.id))}
-          />
-          <QuizOpt
-            text={opts[1]}
-            picked={picked === 1}
-            right={lesson.quiz.correct === 1}
-            revealed={revealed}
-            onClick={() => answer(1, lesson.quiz.correct, lessonKey(course.id, lesson.id))}
-          />
+          {opts.map((text, i) => (
+            <QuizOpt
+              key={i}
+              text={text}
+              picked={picked === i}
+              right={lesson.quiz.correct === i}
+              revealed={revealed}
+              onClick={() => answer(i, lesson.quiz.correct, lessonKey(course.id, lesson.id))}
+            />
+          ))}
         </div>
         {revealed && (
           <div className={`reader__fb ${picked === lesson.quiz.correct ? "reader__fb--ok" : "reader__fb--no"}`}>

@@ -210,7 +210,10 @@ export const useTutor = create<TutorState>()((set, get) => ({
 
   ask: async (scope, question) => {
     const q = question.trim();
-    if (!q || get().sessions[scope].status === "thinking") return;
+    // One in-flight request per scope: overlapping asks interleave their
+    // message patches and the later one is contextualized from stale state.
+    const busy = get().sessions[scope].status === "thinking" || get().sessions[scope].status === "streaming";
+    if (!q || busy) return;
     const session = get().sessions[scope];
     patchSession(scope, { messages: [...session.messages, { role: "user", content: q }], lastQuestion: q });
     patchSession(scope, { status: "thinking" });
@@ -246,7 +249,23 @@ export const useTutor = create<TutorState>()((set, get) => ({
           }
 
           const merged = mergeResult({ reply: accumulated });
-          const { actions, exercise, lesson } = merged;
+          const { actions: blockActions, exercise: blockExercise, lesson } = merged;
+
+          // Text streams carry no out-of-band payload: providers that return
+          // structured fields (the offline mock) must be asked once more for
+          // them, otherwise their actions would be silently dropped while the
+          // text claims success. Live models embed <axiom-actions> blocks.
+          let actions = blockActions;
+          let exercise = blockExercise;
+          if (p.name === "mock") {
+            try {
+              const full = await p.chat(streamReq);
+              if (full.actions?.length) actions = full.actions;
+              if (full.exercise) exercise = full.exercise;
+            } catch {
+              /* keep whatever the text stream carried */
+            }
+          }
 
           if (lesson) {
             const id = `gen-${Date.now().toString(36)}`;

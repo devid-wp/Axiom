@@ -125,7 +125,13 @@ let page;
     await page.waitForTimeout(150);
     await page.locator(".quiz-opt").first().click();
     await page.waitForTimeout(150);
-    const fb = await page.locator(".reader__fb").textContent();
+    // If the first option was wrong, click the revealed correct one.
+    let fb = await page.locator(".reader__fb").textContent();
+    if (!fb.includes("correct") && !fb.includes("верно")) {
+      await page.locator(".quiz-opt--right").click();
+      await page.waitForTimeout(150);
+      fb = await page.locator(".reader__fb").textContent();
+    }
     assert.ok(fb.includes("correct") || fb.includes("верно"));
     const compl = await page.evaluate(() => JSON.parse(localStorage.getItem("axiom_completed")));
     assert.ok(Object.keys(compl).length >= 1);

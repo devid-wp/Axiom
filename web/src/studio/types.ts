@@ -1,11 +1,32 @@
-/* AXIOM — studio domain types. Direct port of src/studio/mod.rs.
-   In-memory kinds/materials use lowercase keys (matches the Slint AppState
-   strings); persisted JSON keeps the native serde capitalization (Wall, Room,
-   ... / Concrete, Brick, ...). */
+/* AXIOM — studio domain types. Flat element list is the single source of
+   truth; hierarchy is expressed through parentId (null = project root).
+   Legacy kinds (column, beam) are kept so old persisted sheets migrate. */
 
-export type ElementKind = "wall" | "room" | "column" | "beam";
+export type ElementKind =
+  | "building"
+  | "floor"
+  | "room"
+  | "corridor"
+  | "wall"
+  | "door"
+  | "window"
+  | "roof"
+  | "column"
+  | "beam";
 export type Material = "concrete" | "brick" | "glass" | "timber" | "steel";
-export type Tool = "select" | "move" | "wall" | "room" | "column" | "beam";
+export type Tool =
+  | "select"
+  | "move"
+  | "building"
+  | "floor"
+  | "room"
+  | "corridor"
+  | "wall"
+  | "door"
+  | "window"
+  | "roof"
+  | "column"
+  | "beam";
 
 export interface Element {
   id: string;
@@ -15,6 +36,10 @@ export interface Element {
   w: number;
   h: number;
   material: Material;
+  /** null = lives at the project root; otherwise the id of the parent. */
+  parentId: string | null;
+  /** degrees, normalized to [0, 360). */
+  rotation: number;
 }
 
 export interface Project {

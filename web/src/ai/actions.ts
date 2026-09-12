@@ -12,8 +12,11 @@ import {
   MIN_SIZE,
   SHEET_H,
   SHEET_W,
+  canContain,
   clamp,
+  isContainer,
   newId,
+  normalizeRotation,
   snap8,
 } from "@/studio/domain";
 import type { AiAction, AiTarget } from "./types";
@@ -29,7 +32,18 @@ export interface ExecResult {
   failReason?: string;
 }
 
-const KINDS: ReadonlySet<string> = new Set(["wall", "room", "column", "beam"]);
+const KINDS: ReadonlySet<string> = new Set([
+  "building",
+  "floor",
+  "room",
+  "corridor",
+  "wall",
+  "door",
+  "window",
+  "roof",
+  "column",
+  "beam",
+]);
 const MATERIALS: ReadonlySet<string> = new Set(["concrete", "brick", "glass", "timber", "steel"]);
 
 function isNum(v: unknown): v is number {
@@ -48,6 +62,7 @@ function cleanTarget(raw: unknown): AiTarget | undefined {
   if (typeof t.kind === "string" && KINDS.has(t.kind)) out.kind = t.kind as ElementKind;
   if (t.last === true) out.last = true;
   if (t.selected === true) out.selected = true;
+  if (t.up === true) out.up = true;
   return Object.keys(out).length ? out : undefined;
 }
 
@@ -67,6 +82,9 @@ export function sanitizeAction(raw: unknown): AiAction | null {
       out.w = a.w;
       out.h = a.h;
     }
+    if (typeof a.parent === "string" && a.parent.length > 0 && a.parent.length <= 64) {
+      (out as Extract<AiAction, { kind: "create_element" }>).parent = a.parent;
+    }
     return out;
   }
 
@@ -85,6 +103,14 @@ export function sanitizeAction(raw: unknown): AiAction | null {
     if (t) out.target = t;
     if (isNum(a.w) && a.w > 0) out.w = a.w;
     if (isNum(a.h) && a.h > 0) out.h = a.h;
+    return out;
+  }
+
+  if (cn<AiAction>(raw, "rotate_element")) {
+    const out: Extract<AiAction, { kind: "rotate_element" }> = { kind: "rotate_element" };
+    const t = cleanTarget(a.target);
+    if (t) out.target = t;
+    if (isNum(a.degrees) && Math.abs(a.degrees) <= 360) out.degrees = a.degrees;
     return out;
   }
 
@@ -119,6 +145,13 @@ export function sanitizeAction(raw: unknown): AiAction | null {
     return out;
   }
 
+  if (cn<AiAction>(raw, "enter_element")) {
+    const out: Extract<AiAction, { kind: "enter_element" }> = { kind: "enter_element" };
+    const t = cleanTarget(a.target);
+    if (t) out.target = t;
+    return out;
+  }
+
   if (cn<AiAction>(raw, "clear_selection")) return { kind: "clear_selection" };
   if (cn<AiAction>(raw, "clear_project")) return { kind: "clear_project" };
 
@@ -137,6 +170,13 @@ function resolveTarget(elts: StudioElement[], t: AiTarget | undefined, selectedI
     return null;
   };
   if (t?.id) return elts.find((e) => e.id === t.id) ?? null;
+  if (t?.up) {
+    const ctx = useStudio.getState().contextId;
+    if (ctx == null) return null;
+    const cur = elts.find((e) => e.id === ctx);
+    if (!cur || cur.parentId == null) return null;
+    return elts.find((e) => e.id === cur.parentId) ?? null;
+  }
   if (t?.kind) return findLast((e) => e.kind === t.kind);
   if (t?.last) return elts[elts.length - 1] ?? null;
   if (t?.selected) return elts.find((e) => e.id === selectedId) ?? null;
@@ -167,6 +207,9 @@ export function autoPlace(elts: StudioElement[], kind: ElementKind): { x: number
 /**
  * Execute a validated batch as ONE undoable Studio operation.
  * The working list is mutated locally, then committed through the store.
+ * Creations land in the user's current editing context unless the action
+ * names another parent; containment rules are enforced and violations are
+ * skipped (counted) instead of applied.
  */
 export function executeActions(actions: AiAction[]): ExecResult {
   const st = useStudio.getState();
@@ -180,10 +223,26 @@ export function executeActions(actions: AiAction[]): ExecResult {
   let cleared = false;
   let skipped = 0;
   let selectId: string | null = null;
+  let contextId: string | null = st.contextId;
+
+  const contextKind = (): StudioElement["kind"] | null => {
+    if (contextId == null) return null;
+    return els.find((e) => e.id === contextId)?.kind ?? null;
+  };
 
   for (const a of actions) {
     switch (a.kind) {
       case "create_element": {
+        // Resolve the parent: explicit id wins, otherwise the live context.
+        let parent: string | null = contextId;
+        if (a.parent && a.parent !== "current") {
+          parent = els.some((e) => e.id === a.parent) ? (a.parent as string) : null;
+          if (parent === null && a.parent !== "root") { skipped++; break; }
+          if (a.parent === "root") parent = null;
+        }
+        const pk = parent == null ? null : (els.find((e) => e.id === parent)?.kind ?? null);
+        if (parent != null && pk === null) { skipped++; break; }
+        if (!canContain(pk, a.elementType)) { skipped++; break; }
         const d = ELEMENT_DEFAULTS[a.elementType];
         const pos = isNum(a.x) && isNum(a.y) ? { x: snap8(clamp(a.x, 0, SHEET_W - d.w)), y: snap8(clamp(a.y, 0, SHEET_H - d.h)) } : autoPlace(els, a.elementType);
         const el: StudioElement = {
@@ -194,6 +253,8 @@ export function executeActions(actions: AiAction[]): ExecResult {
           w: snap8(clamp(isNum(a.w) ? a.w : d.w, MIN_SIZE, MAX_SIZE)),
           h: snap8(clamp(isNum(a.h) ? a.h : d.h, MIN_SIZE, MAX_SIZE)),
           material: a.material ?? "concrete",
+          parentId: parent,
+          rotation: 0,
         };
         els.push(el);
         created.push(el);
@@ -217,6 +278,15 @@ export function executeActions(actions: AiAction[]): ExecResult {
         if (!t) { skipped++; break; }
         if (isNum(a.w)) t.w = snap8(clamp(a.w, MIN_SIZE, MAX_SIZE));
         if (isNum(a.h)) t.h = snap8(clamp(a.h, MIN_SIZE, MAX_SIZE));
+        changedIds.push(t.id);
+        selectId = t.id;
+        break;
+      }
+      case "rotate_element": {
+        const t = resolveTarget(els, a.target, st.selectedId);
+        if (!t) { skipped++; break; }
+        const deg = isNum(a.degrees) ? a.degrees : 90;
+        t.rotation = normalizeRotation((t.rotation ?? 0) + deg);
         changedIds.push(t.id);
         selectId = t.id;
         break;
@@ -255,6 +325,26 @@ export function executeActions(actions: AiAction[]): ExecResult {
         selectId = t.id;
         break;
       }
+      case "enter_element": {
+        if (a.target?.up) {
+          // Navigate one level up; at the top level this lands on the root.
+          const cur = contextId == null ? null : els.find((e) => e.id === contextId);
+          contextId = cur?.parentId ?? null;
+          selectId = "";
+          break;
+        }
+        const t = resolveTarget(els, a.target, st.selectedId);
+        if (!t) { skipped++; break; }
+        // Only containers have an editing context; entering a leaf would
+        // strand the user on an empty canvas, so treat it as selection.
+        if (isContainer(t.kind)) {
+          contextId = t.id;
+          selectId = "";
+        } else {
+          selectId = t.id;
+        }
+        break;
+      }
       case "clear_selection":
         selectId = "";
         break;
@@ -262,17 +352,27 @@ export function executeActions(actions: AiAction[]): ExecResult {
         els.length = 0;
         cleared = true;
         selectId = "";
+        contextId = null;
         break;
     }
   }
 
-  const changed = !(els.length === proj.elements.length && els.every((e, i) => e.id === proj.elements[i].id && e.x === proj.elements[i].x && e.y === proj.elements[i].y && e.w === proj.elements[i].w && e.h === proj.elements[i].h && e.material === proj.elements[i].material));
+  const same = (x: StudioElement, y: StudioElement) =>
+    x.id === y.id && x.kind === y.kind && x.x === y.x && x.y === y.y &&
+    x.w === y.w && x.h === y.h && x.material === y.material &&
+    (x.parentId ?? null) === (y.parentId ?? null) && (x.rotation ?? 0) === (y.rotation ?? 0);
+  const changed = els.length !== proj.elements.length || els.some((e, i) => !same(e, proj.elements[i]));
   if (changed) useStudio.getState().commitElements(els, "AI action");
 
   if (selectId !== null && selectId !== "" && els.some((e) => e.id === selectId)) {
     useStudio.setState({ selectedId: selectId });
   } else if (selectId === "") {
     useStudio.setState({ selectedId: "" });
+  }
+
+  if (contextId !== st.contextId) {
+    const ok = contextId === null || els.some((e) => e.id === contextId);
+    if (ok) useStudio.setState({ contextId });
   }
 
   return { ok: true, changed, changedIds, created, cleared, skipped, selectId };
