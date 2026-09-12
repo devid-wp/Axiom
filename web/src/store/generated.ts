@@ -6,12 +6,66 @@ import type { Course, Lesson } from "@/data/content";
 
 const KEY = "axiom_generated_lessons";
 
+export function normalizeGeneratedLesson(raw: unknown): GeneratedLesson | null {
+  if (!raw || typeof raw !== "object") return null;
+  const v = raw as Record<string, unknown>;
+  const title = v.title as Record<string, unknown> | undefined;
+  const body = v.body as Record<string, unknown> | undefined;
+  const quiz = v.quiz as Record<string, unknown> | undefined;
+  const q = quiz?.q as Record<string, unknown> | undefined;
+  const opts = quiz?.opts as Record<string, unknown> | undefined;
+  const text = (x: unknown): string | null => typeof x === "string" && x.trim() ? x.trim() : null;
+  const list = (x: unknown): string[] | null =>
+    Array.isArray(x) && x.length > 0 && x.every((item) => text(item) !== null)
+      ? x.map((item) => text(item)!)
+      : null;
+  const id = text(v.id);
+  const courseTag = text(v.courseTag);
+  const titleEn = text(title?.en);
+  const bodyEn = list(body?.en);
+  const optsEn = list(opts?.en);
+  const questionEn = text(q?.en);
+  const correct = quiz?.correct;
+  if (
+    !id || !courseTag || !titleEn || !bodyEn || !questionEn || !optsEn || optsEn.length < 2 ||
+    !Number.isInteger(correct) || (correct as number) < 0 || (correct as number) >= optsEn.length
+  ) return null;
+  const titleRu = text(title?.ru) ?? titleEn;
+  const bodyRu = list(body?.ru) ?? bodyEn;
+  const optsRu = list(opts?.ru) ?? optsEn;
+  if (optsRu.length !== optsEn.length) return null;
+  return {
+    id,
+    courseTag,
+    title: { en: titleEn, ru: titleRu },
+    duration: text(v.duration) ?? "10 min",
+    level: text(v.level) ?? "beginner",
+    body: { en: bodyEn, ru: bodyRu },
+    quiz: { q: { en: questionEn, ru: text(q?.ru) ?? questionEn }, opts: { en: optsEn, ru: optsRu }, correct: correct as number },
+    createdAt: text(v.createdAt) ?? new Date(0).toISOString(),
+  };
+}
+
+function lessonFingerprint(lesson: GeneratedLesson): string {
+  return `${lesson.courseTag.toLowerCase()}\u0000${lesson.title.en.toLowerCase()}`;
+}
+
 function loadGenerated(): GeneratedLesson[] {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as GeneratedLesson[];
+      if (Array.isArray(parsed)) {
+        const seen = new Set<string>();
+        return parsed.flatMap((item) => {
+          const lesson = normalizeGeneratedLesson(item);
+          if (!lesson) return [];
+          const fingerprint = lessonFingerprint(lesson);
+          if (seen.has(fingerprint)) return [];
+          seen.add(fingerprint);
+          return [lesson];
+        });
+      }
     }
   } catch {
     /* ignore corrupt data */
@@ -45,7 +99,11 @@ export const useGenerated = create<GeneratedState>()((set, get) => ({
   lessons: loadGenerated(),
 
   addLesson: (lesson) => {
-    const next = [...get().lessons, lesson];
+    const normalized = normalizeGeneratedLesson(lesson);
+    if (!normalized) return;
+    const fingerprint = lessonFingerprint(normalized);
+    if (get().lessons.some((item) => lessonFingerprint(item) === fingerprint)) return;
+    const next = [...get().lessons, normalized];
     try {
       localStorage.setItem(KEY, JSON.stringify(next));
     } catch {

@@ -1,9 +1,7 @@
 node_modules
 dist
 target
-legacy_web/node_modules
-legacy_web/dist
-legacy_web/src-tauri/target
+.env
 .DS_Store
 projects.json
 web/dist

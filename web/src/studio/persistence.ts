@@ -6,6 +6,7 @@ import type { Element, ElementKind, Material, Project } from "./types";
 import { newId } from "./domain";
 
 const KEY = "axiom_projects";
+const CURRENT_PROJECT_KEY = "axiom_current_project";
 
 const KIND_CAPS: Record<ElementKind, string> = {
   building: "Building",
@@ -129,6 +130,24 @@ export function saveProjects(projects: Project[]): void {
     localStorage.setItem(KEY, JSON.stringify(projectsToJson(projects), null, 2));
   } catch {
     /* storage unavailable or full */
+  }
+}
+
+export function loadCurrentProjectIndex(projectCount: number): number {
+  try {
+    const index = Number(localStorage.getItem(CURRENT_PROJECT_KEY));
+    if (Number.isInteger(index) && index >= 0 && index < projectCount) return index;
+  } catch {
+    /* storage unavailable */
+  }
+  return 0;
+}
+
+export function saveCurrentProjectIndex(index: number): void {
+  try {
+    localStorage.setItem(CURRENT_PROJECT_KEY, String(index));
+  } catch {
+    /* storage unavailable */
   }
 }
 

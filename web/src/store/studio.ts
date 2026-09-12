@@ -27,7 +27,13 @@ import {
   subtreeIds,
   type SnapGuide,
 } from "@/studio/domain";
-import { exportJson, loadProjects, saveProjects } from "@/studio/persistence";
+import {
+  exportJson,
+  loadCurrentProjectIndex,
+  loadProjects,
+  saveCurrentProjectIndex,
+  saveProjects,
+} from "@/studio/persistence";
 
 interface DragMove {
   id: string;
@@ -41,6 +47,8 @@ interface DragSize {
   id: string;
   startX: number;
   startY: number;
+  startW: number;
+  startH: number;
   dirty: boolean;
 }
 
@@ -187,10 +195,12 @@ function mutateElement(
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.15;
+const INITIAL_PROJECTS = loadProjects();
+const INITIAL_PROJECT_INDEX = loadCurrentProjectIndex(INITIAL_PROJECTS.length);
 
 export const useStudio = create<StudioState>()((set, get) => ({
-  projects: loadProjects(),
-  currentIdx: 0,
+  projects: INITIAL_PROJECTS,
+  currentIdx: INITIAL_PROJECT_INDEX,
   selectedId: "",
   contextId: null,
   tool: "select",
@@ -295,6 +305,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
 
   openProject: (idx) => {
     if (idx < 0 || idx >= get().projects.length || idx === get().currentIdx) return;
+    saveCurrentProjectIndex(idx);
     set({
       currentIdx: idx,
       selectedId: "",
@@ -338,6 +349,8 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const cx = clamp(nx, 0, SHEET_W - el.w);
     const cy = clamp(ny, 0, SHEET_H - el.h);
     const idx = get().currentIdx;
+    const moved = cx !== el.x || cy !== el.y;
+    if (moved && !d.dirty) pushHistory(get, set);
     set({
       projects: get().projects.map((p, i) =>
         i === idx
@@ -347,8 +360,9 @@ export const useStudio = create<StudioState>()((set, get) => ({
             }
           : p
       ),
-      _dragMove: { ...d, dirty: true },
+      _dragMove: { ...d, dirty: d.dirty || moved },
       _snapGuides: guides,
+      undoEnabled: get()._hist.length > 0,
     });
   },
 
@@ -358,7 +372,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
     if (!el) return;
     set({
       selectedId: id,
-      _dragSize: { id, startX: x, startY: y, dirty: false },
+      _dragSize: { id, startX: x, startY: y, startW: el.w, startH: el.h, dirty: false },
     });
   },
 
@@ -368,15 +382,17 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const proj = get().projects[get().currentIdx];
     const el = proj?.elements.find((e) => e.id === id);
     if (!el) return;
-    const nw = snap8(clamp(el.w + (x - d.startX), MIN_SIZE, MAX_SIZE));
-    const nh = snap8(clamp(el.h + (y - d.startY), MIN_SIZE, MAX_SIZE));
+    const nw = snap8(clamp(d.startW + (x - d.startX), MIN_SIZE, MAX_SIZE));
+    const nh = snap8(clamp(d.startH + (y - d.startY), MIN_SIZE, MAX_SIZE));
     const idx = get().currentIdx;
     const moved = nw !== el.w || nh !== el.h;
+    if (moved && !d.dirty) pushHistory(get, set);
     set({
       projects: get().projects.map((p, i) =>
         i === idx ? { ...p, elements: p.elements.map((e) => (e.id === id ? { ...e, w: nw, h: nh } : e)) } : p
       ),
       _dragSize: moved ? { ...d, dirty: true } : d,
+      undoEnabled: get()._hist.length > 0,
     });
     if (moved) saveProjects(get().projects);
   },
@@ -692,6 +708,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
       elements: [],
     };
     const projects = [...get().projects, proj];
+    saveCurrentProjectIndex(projects.length - 1);
     set({
       projects,
       currentIdx: projects.length - 1,
