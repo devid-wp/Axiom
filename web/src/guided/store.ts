@@ -6,7 +6,7 @@
 import { create } from "zustand";
 import { useStudio } from "@/store/studio";
 import { executeActions } from "@/ai/actions";
-import { guidedLessonById } from "./lessons";
+import { guidedLessonById, guidedTrackForLesson } from "./lessons";
 import { validate } from "./validate";
 import type { GuidedLesson, GuidedPhase } from "./types";
 
@@ -259,3 +259,14 @@ useGuided.subscribe(persist);
   useGuided.setState({ activeLesson: lesson, stepIndex, phase: "brief" });
   ensureSubscribed();
 })();
+
+/* Study → Guided entry. Resolves an EXISTING lessonKey(courseId, lessonId)
+   to its Guided track and starts it. Returns false when the lesson has no
+   track — callers must NOT navigate then (no fake/unrelated starts).
+   Navigation itself stays with the caller (existing setView mechanism). */
+export function practiceLesson(courseId: string, lessonId: string): boolean {
+  const track = guidedTrackForLesson(`${courseId}/${lessonId}`);
+  if (!track) return false;
+  useGuided.getState().start(track.id);
+  return true;
+}

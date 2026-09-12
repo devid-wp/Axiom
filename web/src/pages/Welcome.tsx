@@ -1,5 +1,4 @@
 import { useUi } from "@/store/ui";
-import { markWelcomeSeen } from "@/store/onboarding";
 import {
   ArrowRight,
   BookOpen,
@@ -56,12 +55,12 @@ function tx(lang: Lang, key: keyof typeof T): string {
   return T[key][lang];
 }
 
-export function WelcomePage() {
+export function WelcomePage({ onDone }: { onDone?: () => void }) {
   const lang = useUi((s) => s.lang) as Lang;
   const setView = useUi((s) => s.setView);
 
   const go = (view: "study" | "studio") => {
-    markWelcomeSeen();
+    onDone?.();
     setView(view);
   };
 

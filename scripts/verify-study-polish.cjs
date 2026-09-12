@@ -20,20 +20,25 @@ let browser;
   page = await ctx.newPage();
   page.on("pageerror", (e) => { throw new Error(`pageerror: ${String(e).slice(0, 160)}`); });
 
-  await step("app starts on Start (base screen)", async () => {
+  await step("app entry is Welcome, dashboard after CTA", async () => {
     await page.goto(URL, { waitUntil: "domcontentloaded" });
-    await page.evaluate(() => { localStorage.clear(); document.cookie = "axiom_seen=true; path=/; max-age=31536000"; });
+    await page.evaluate(() => { localStorage.clear(); });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForSelector(".shell");
     await page.waitForTimeout(500);
+    assert.strictEqual(await page.locator(".welcome").count(), 1, "entry is Welcome");
+    // dashboard is reached via entry CTA, then normal navigation
+    await page.locator(".welcome__explore").click();
+    await page.waitForTimeout(300);
+    assert.strictEqual(await page.locator(".page.studio").count(), 1);
+    await page.click('[title="Start"]');
+    await page.waitForTimeout(300);
     assert.strictEqual(await page.locator(".page.start").count(), 1);
-    assert.strictEqual(await page.locator(".page.study").count(), 0);
-    assert.strictEqual(await page.locator(".page.studio").count(), 0);
+    assert.strictEqual(await page.locator(".welcome").count(), 0);
   });
 
-  await step("first-time onboarding still works (cookie)", async () => {
-    await page.evaluate(() => { document.cookie = "axiom_seen=; path=/; max-age=0"; });
-    await page.reload({ waitUntil: "domcontentloaded" });
+  await step("entry CTA needs no cookie and sets none", async () => {
+    await page.goto(URL, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(".shell");
     await page.waitForTimeout(500);
     assert.strictEqual(await page.locator(".welcome").count(), 1);
@@ -41,14 +46,14 @@ let browser;
     await page.waitForTimeout(400);
     assert.strictEqual(await page.locator(".page.study").count(), 1);
     const jar = await page.evaluate(() => document.cookie);
-    assert.ok(jar.includes("axiom_seen=true"), "cookie set by CTA");
+    assert.ok(!jar.includes("axiom_seen"), "no cookie involved");
   });
 
-  await step("navigate Study / Studio from Start", async () => {
+  await step("navigate Study / Studio / Start after entry", async () => {
     await page.goto(URL, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(".shell");
     await page.waitForTimeout(400);
-    await page.click('[title="Study"]');
+    await page.locator(".welcome__start").click();
     await page.waitForTimeout(300);
     assert.strictEqual(await page.locator(".page.study").count(), 1);
     await page.click('[title="Studio"]');

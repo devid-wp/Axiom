@@ -1,7 +1,7 @@
+import { useState } from "react";
 import { useUi } from "@/store/ui";
 import { useStudio } from "@/store/studio";
 import { useStudy, lessonKey } from "@/store/study";
-import { hasSeenWelcome } from "@/store/onboarding";
 import { WelcomePage } from "./Welcome";
 import { STR } from "@/i18n";
 import { courses, totalLessons } from "@/data/content";
@@ -18,7 +18,13 @@ interface NavCard {
   accent?: boolean;
 }
 
+/* Welcome is the canonical entry screen: shown once per page load, on the
+   first mount of Start. Afterwards Start is the normal dashboard until the
+   next reload. No cookies, no persistence — user data is never consulted. */
+let entryConsumed = false;
+
 export function StartPage() {
+  const [showEntry] = useState(() => !entryConsumed);
   const lang = useUi((s) => s.lang);
   const s = STR[lang];
   const setView = useUi((s) => s.setView);
@@ -42,9 +48,16 @@ export function StartPage() {
     c.lessons.some((l) => completed[lessonKey(c.id, l.id)])
   );
 
-  // First launch: show the Welcome introduction instead of the dashboard.
-  // Re-checked every render so returning to Start after onboarding is normal.
-  if (!hasSeenWelcome()) return <WelcomePage />;
+  // Application entry: Welcome first, dashboard afterwards.
+  if (showEntry) {
+    return (
+      <WelcomePage
+        onDone={() => {
+          entryConsumed = true;
+        }}
+      />
+    );
+  }
 
   const navCards: NavCard[] = [
     {

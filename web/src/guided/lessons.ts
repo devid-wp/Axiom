@@ -67,3 +67,16 @@ export const guidedLessons: GuidedLesson[] = [foundationLesson];
 export function guidedLessonById(id: string): GuidedLesson | null {
   return guidedLessons.find((l) => l.id === id) ?? null;
 }
+
+/* Study → Guided connection. Keys are EXISTING lessonKey(courseId, lessonId)
+   values ("fundamentals/f1"). Only explicitly mapped lessons offer guided
+   practice — unmapped lessons must NOT start an unrelated track. */
+const LESSON_TO_TRACK: Record<string, string> = {
+  // "What is Architecture?" introduces building hierarchy in practice.
+  "fundamentals/f1": FOUNDATION_LESSON_ID,
+};
+
+export function guidedTrackForLesson(key: string): GuidedLesson | null {
+  const id = LESSON_TO_TRACK[key];
+  return id ? guidedLessonById(id) : null;
+}

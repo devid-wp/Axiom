@@ -1,5 +1,6 @@
-/* AXIOM — Welcome first-entry E2E (cookie flag: axiom_seen=true).
-   Requires dev server on :5173. Run: node scripts/verify-welcome.cjs */
+/* AXIOM — Welcome entry invariant: EVERY application entry -> Welcome.
+   No cookie, no flags. Requires dev server on :5173.
+   Run: node scripts/verify-welcome.cjs */
 const { firefox } = require("playwright");
 const assert = require("assert");
 
@@ -13,86 +14,86 @@ async function step(name, fn) {
 
 let page;
 let browser;
-let context;
 
-async function clearSeenCookie() {
-  await page.evaluate(() => {
-    document.cookie = "axiom_seen=; path=/; max-age=0; SameSite=Lax";
-  });
-}
-async function seenCookie() {
-  const jar = await page.evaluate(() => document.cookie);
-  return jar.split(";").some((c) => c.trim() === "axiom_seen=true");
-}
-async function openStart() {
+async function openEntry() {
   await page.goto(URL, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".shell");
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(500);
+}
+async function noSeenCookie() {
+  const jar = await page.evaluate(() => document.cookie);
+  return !jar.split(";").some((c) => c.trim() === "axiom_seen=true");
 }
 
 (async () => {
   browser = await firefox.launch();
-  context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
-  page = await context.newPage();
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  page = await ctx.newPage();
+  page.on("pageerror", (e) => { throw new Error(`pageerror: ${String(e).slice(0, 160)}`); });
 
-  await step("1-3. no cookie -> Start shows Welcome", async () => {
-    await openStart();
-    await clearSeenCookie();
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForSelector(".shell");
-    await page.waitForTimeout(400);
+  await step("1. open AXIOM -> Welcome", async () => {
+    await openEntry();
     assert.strictEqual(await page.locator(".welcome").count(), 1);
     assert.ok((await page.locator(".welcome__word").textContent()).includes("AXIOM"));
   });
 
-  await step("4-5. Start learning -> study + axiom_seen=true", async () => {
+  await step("2-3. Start learning -> Study, navigate normally", async () => {
     await page.locator(".welcome__start").click();
     await page.waitForTimeout(400);
     assert.strictEqual(await page.locator(".page.study").count(), 1);
-    assert.ok(await seenCookie(), "cookie set after Start learning");
-  });
-
-  await step("6-7. reload -> normal dashboard, no Welcome", async () => {
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForSelector(".shell");
-    await page.waitForTimeout(400);
-    assert.strictEqual(await page.locator(".welcome").count(), 0);
+    await page.click('[title="Studio"]');
+    await page.waitForTimeout(300);
+    assert.strictEqual(await page.locator(".page.studio").count(), 1);
+    await page.click('[title="Start"]');
+    await page.waitForTimeout(300);
     assert.strictEqual(await page.locator(".page.start").count(), 1);
+    assert.strictEqual(await page.locator(".welcome").count(), 0, "dashboard after entry, no Welcome repeat");
   });
 
-  await step("8-10. clear cookie -> Welcome appears again", async () => {
-    await clearSeenCookie();
-    assert.ok(!(await seenCookie()), "cookie cleared");
+  await step("4. reload -> Welcome again", async () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForSelector(".shell");
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(500);
     assert.strictEqual(await page.locator(".welcome").count(), 1);
   });
 
-  await step("11. cookie reset leaves project/progress data intact", async () => {
+  await step("5-6. Explore Studio -> Studio, reload -> Welcome", async () => {
+    await page.locator(".welcome__explore").click();
+    await page.waitForTimeout(400);
+    assert.strictEqual(await page.locator(".page.studio").count(), 1);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector(".shell");
+    await page.waitForTimeout(500);
+    assert.strictEqual(await page.locator(".welcome").count(), 1);
+  });
+
+  await step("7-9. seeded user data intact, no cookie/localStorage flags needed", async () => {
     await page.evaluate(() => {
       localStorage.setItem("axiom_projects", JSON.stringify([{
         id: "p1", name: "My House", created_at: new Date().toISOString(),
         elements: [{ id: "e1", kind: "room", x: 80, y: 90, w: 220, h: 160, material: "concrete", parentId: null, rotation: 0 }],
       }]));
       localStorage.setItem("axiom_completed", JSON.stringify({ "fundamentals/f1": true }));
+      localStorage.setItem("axiom_guided", JSON.stringify({
+        activeLessonId: null, stepIndex: 0, done: { "guided/foundation": true },
+      }));
     });
-    await clearSeenCookie();
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForSelector(".shell");
-    await page.waitForTimeout(400);
-    assert.strictEqual(await page.locator(".welcome").count(), 1, "cookie is the only flag");
+    await page.waitForTimeout(500);
+    assert.strictEqual(await page.locator(".welcome").count(), 1, "entry always Welcome");
     const projs = await page.evaluate(() => localStorage.getItem("axiom_projects"));
     const compl = await page.evaluate(() => localStorage.getItem("axiom_completed"));
-    assert.ok(projs.includes("My House"), "projects untouched");
-    assert.ok(compl.includes("fundamentals/f1"), "progress untouched");
+    const guided = await page.evaluate(() => localStorage.getItem("axiom_guided"));
+    assert.ok(projs.includes("My House"), "projects intact");
+    assert.ok(compl.includes("fundamentals/f1"), "progress intact");
+    assert.ok(guided.includes("guided/foundation"), "guided intact");
   });
 
-  await step("12. Explore Studio also sets axiom_seen=true", async () => {
-    await page.locator(".welcome__explore").click();
-    await page.waitForTimeout(400);
-    assert.strictEqual(await page.locator(".page.studio").count(), 1);
-    assert.ok(await seenCookie(), "cookie set after Explore Studio");
+  await step("10. no axiom_seen cookie, no onboarding keys required", async () => {
+    assert.ok(await noSeenCookie(), "no cookie set by entry flow");
+    const onboard = await page.evaluate(() => localStorage.getItem("axiom_onboarding"));
+    assert.strictEqual(onboard, null, "no onboarding localStorage key");
   });
 
   await browser.close();

@@ -4,6 +4,8 @@ import { useStudy, lessonKey } from "@/store/study";
 import { STR } from "@/i18n";
 import { courses as hardcodedCourses, totalLessons as hardcodedTotal } from "@/data/content";
 import { mergeCourses } from "@/store/generated";
+import { guidedTrackForLesson } from "@/guided/lessons";
+import { practiceLesson } from "@/guided/store";
 import { Caption } from "@/components/Caption";
 import { TreeHead } from "@/components/TreeHead";
 import { LessonRow } from "@/components/LessonRow";
@@ -39,6 +41,11 @@ function Reader() {
   const q = lesson.quiz.q[lang];
   const opts = lesson.quiz.opts[lang];
   const revealed = picked >= 0;
+  const canPractice = guidedTrackForLesson(lessonKey(course.id, lesson.id)) !== null;
+  const noPracticeTitle =
+    lang === "ru"
+      ? "Гид-практика для этого урока пока недоступна"
+      : "Guided practice not available for this lesson yet";
 
   return (
     <article className="reader">
@@ -95,7 +102,14 @@ function Reader() {
       </div>
 
       <div className="reader__actions">
-        <Button kind="primary" onClick={() => setView("studio")}>
+        <Button
+          kind="primary"
+          enabled={canPractice}
+          title={canPractice ? "" : noPracticeTitle}
+          onClick={() => {
+            if (practiceLesson(course.id, lesson.id)) setView("studio");
+          }}
+        >
           <Box size={13} />
           {s.practiceInStudio}
         </Button>
@@ -125,6 +139,16 @@ export function StudyPage() {
     return acc + k;
   }, 0);
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  const railCourse = courses[courseIdx];
+  const railLesson = railCourse?.lessons[lessonIdx];
+  const railCanPractice =
+    railCourse && railLesson
+      ? guidedTrackForLesson(lessonKey(railCourse.id, railLesson.id)) !== null
+      : false;
+  const railNoPracticeTitle =
+    lang === "ru"
+      ? "Гид-практика для этого урока пока недоступна"
+      : "Guided practice not available for this lesson yet";
 
   return (
     <div className="page study">
@@ -218,7 +242,16 @@ export function StudyPage() {
               <div className="study-rail__gap" />
               <span className="eyebrow">Actions</span>
               <div className="study-rail__action">
-                <Button kind="primary" onClick={() => useUi.getState().setView("studio")}>
+                <Button
+                  kind="primary"
+                  enabled={railCanPractice}
+                  title={railCanPractice ? "" : railNoPracticeTitle}
+                  onClick={() => {
+                    if (railCourse && railLesson && practiceLesson(railCourse.id, railLesson.id)) {
+                      useUi.getState().setView("studio");
+                    }
+                  }}
+                >
                   {s.practiceInStudio} <ArrowRight size={13} />
                 </Button>
               </div>
