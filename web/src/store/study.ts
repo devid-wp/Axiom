@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { categories, categoryToCourse, courses } from "@/data/content";
+import { categories, categoryToCourse } from "@/data/content";
+import { getCourses } from "./courses";
 
 /* Completed lessons are persisted under the same key the legacy web app used,
    preserving that data contract. */
@@ -21,13 +22,13 @@ function loadCompleted(): Record<string, boolean> {
 }
 
 interface StudyState {
-  course: number;
-  lesson: number;
+  courseId: string;
+  lessonId: string;
   category: number;
   picked: number;
   completed: Record<string, boolean>;
-  selectCourse: (i: number) => void;
-  selectLesson: (i: number) => void;
+  selectCourse: (courseId: string) => void;
+  selectLesson: (lessonId: string) => void;
   answer: (i: number, correct: number, lessonKey: string) => void;
   openByCategory: (i: number) => void;
   openEntry: (category: number, lesson: number) => void;
@@ -38,21 +39,22 @@ export function lessonKey(courseId: string, lessonId: string): string {
 }
 
 export const useStudy = create<StudyState>()((set, get) => ({
-  course: 0,
-  lesson: 0,
+  courseId: getCourses()[0]?.id ?? "",
+  lessonId: getCourses()[0]?.lessons[0]?.id ?? "",
   category: 0,
   picked: -1,
   completed: loadCompleted(),
 
-  selectCourse: (i) => {
-    if (i < 0 || i >= courses.length || i === get().course) return;
-    set({ course: i, lesson: 0, picked: -1 });
+  selectCourse: (courseId) => {
+    const course = getCourses().find((item) => item.id === courseId);
+    if (!course || course.id === get().courseId) return;
+    set({ courseId: course.id, lessonId: course.lessons[0]?.id ?? "", picked: -1 });
   },
 
-  selectLesson: (i) => {
-    const course = courses[get().course];
-    if (!course || i < 0 || i >= course.lessons.length) return;
-    set({ lesson: i, picked: -1 });
+  selectLesson: (lessonId) => {
+    const course = getCourses().find((item) => item.id === get().courseId);
+    if (!course || !course.lessons.some((lesson) => lesson.id === lessonId)) return;
+    set({ lessonId, picked: -1 });
   },
 
   answer: (i, correct, key) => {
@@ -72,18 +74,22 @@ export const useStudy = create<StudyState>()((set, get) => ({
   openByCategory: (i) => {
     if (i < 0 || i >= 4 || i === get().category) return;
     const map = categoryToCourse;
-    const course = map[categories[i].id] ?? 0;
-    set({ category: i, course, lesson: 0, picked: -1 });
+    const courseIndex = map[categories[i].id];
+    const course = getCourses()[courseIndex];
+    if (!course) return;
+    set({ category: i, courseId: course.id, lessonId: course.lessons[0]?.id ?? "", picked: -1 });
   },
 
   openEntry: (category, lesson) => {
     if (category < 0 || category >= categories.length) return;
     const c = categories[category];
-    if (lesson < 0 || lesson >= courses[categoryToCourse[c.id] ?? 0].lessons.length) return;
+    const course = getCourses()[categoryToCourse[c.id] ?? -1];
+    const selectedLesson = course?.lessons[lesson];
+    if (!course || !selectedLesson) return;
     set({
       category,
-      course: categoryToCourse[c.id] ?? 0,
-      lesson,
+      courseId: course.id,
+      lessonId: selectedLesson.id,
       picked: -1,
     });
   },

@@ -1,9 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useUi } from "@/store/ui";
 import { useStudy, lessonKey } from "@/store/study";
 import { STR } from "@/i18n";
-import { courses as hardcodedCourses, totalLessons as hardcodedTotal } from "@/data/content";
-import { mergeCourses } from "@/store/generated";
+import { useCourses } from "@/store/courses";
+import type { Course } from "@/data/content";
 import { guidedTrackForLesson } from "@/guided/lessons";
 import { practiceLesson } from "@/guided/store";
 import { Caption } from "@/components/Caption";
@@ -16,27 +16,25 @@ import { AiChat } from "@/components/ai/AiChat";
 import { Sparkles, ArrowRight, Box, Check } from "lucide-react";
 import "./Study.css";
 
-function useMergedCourses() {
-  return useMemo(() => mergeCourses(hardcodedCourses), []);
-}
-
-function totalLessonsFor(c: ReturnType<typeof useMergedCourses>) {
+function totalLessonsFor(c: Course[]) {
   return c.reduce((acc, cc) => acc + cc.lessons.length, 0);
 }
 
 function Reader() {
   const lang = useUi((s) => s.lang);
   const s = STR[lang];
-  const courseIdx = useStudy((st) => st.course);
-  const lessonIdx = useStudy((st) => st.lesson);
+  const courseId = useStudy((st) => st.courseId);
+  const lessonId = useStudy((st) => st.lessonId);
   const picked = useStudy((st) => st.picked);
   const answer = useStudy((st) => st.answer);
   const setView = useUi((st) => st.setView);
   const requestAi = useUi((st) => st.requestAi);
-  const courses = useMergedCourses();
+  const courses = useCourses((state) => state.courses);
 
-  const course = courses[courseIdx];
-  const lesson = course.lessons[lessonIdx];
+  const course = courses.find((item) => item.id === courseId) ?? courses[0];
+  const lesson = course?.lessons.find((item) => item.id === lessonId) ?? course?.lessons[0];
+  if (!course || !lesson) return null;
+  const lessonIdx = course.lessons.findIndex((item) => item.id === lesson.id);
   const body = lesson.body[lang];
   const q = lesson.quiz.q[lang];
   const opts = lesson.quiz.opts[lang];
@@ -126,12 +124,12 @@ export function StudyPage() {
   const [railTab, setRailTab] = useState<"progress" | "ai">("progress");
   const lang = useUi((s) => s.lang);
   const s = STR[lang];
-  const courseIdx = useStudy((st) => st.course);
-  const lessonIdx = useStudy((st) => st.lesson);
+  const courseId = useStudy((st) => st.courseId);
+  const lessonId = useStudy((st) => st.lessonId);
   const completed = useStudy((st) => st.completed);
   const selectCourse = useStudy((st) => st.selectCourse);
   const selectLesson = useStudy((st) => st.selectLesson);
-  const courses = useMergedCourses();
+  const courses = useCourses((state) => state.courses);
   const total = totalLessonsFor(courses);
 
   const done = courses.reduce((acc, c) => {
@@ -139,8 +137,8 @@ export function StudyPage() {
     return acc + k;
   }, 0);
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
-  const railCourse = courses[courseIdx];
-  const railLesson = railCourse?.lessons[lessonIdx];
+  const railCourse = courses.find((course) => course.id === courseId) ?? courses[0];
+  const railLesson = railCourse?.lessons.find((lesson) => lesson.id === lessonId) ?? railCourse?.lessons[0];
   const railCanPractice =
     railCourse && railLesson
       ? guidedTrackForLesson(lessonKey(railCourse.id, railLesson.id)) !== null
@@ -164,16 +162,16 @@ export function StudyPage() {
             </div>
           </div>
           <div className="study-toc__courses">
-            {courses.map((c, ci) => (
+            {courses.map((c) => (
               <div key={c.id} className="study-toc__course">
                 <TreeHead
                   text={c.title[lang]}
                   meta={c.meta[lang]}
                   accent={c.accent}
-                  active={courseIdx === ci}
-                  onClick={() => selectCourse(ci)}
+                  active={courseId === c.id}
+                  onClick={() => selectCourse(c.id)}
                 />
-                {courseIdx === ci && (
+                {courseId === c.id && (
                   <div className="study-toc__lessons">
                     {c.lessons.map((l, li) => (
                       <LessonRow
@@ -181,9 +179,9 @@ export function StudyPage() {
                         num={String(li + 1).padStart(2, "0")}
                         text={l.title[lang]}
                         dur={l.duration}
-                        active={lessonIdx === li}
+                        active={lessonId === l.id}
                         done={completed[lessonKey(c.id, l.id)]}
-                        onClick={() => selectLesson(li)}
+                        onClick={() => selectLesson(l.id)}
                       />
                     ))}
                   </div>

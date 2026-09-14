@@ -4,7 +4,7 @@ import { useStudio } from "@/store/studio";
 import { useStudy, lessonKey } from "@/store/study";
 import { WelcomePage } from "./Welcome";
 import { STR } from "@/i18n";
-import { courses, totalLessons } from "@/data/content";
+import { useCourses } from "@/store/courses";
 import { Compass, Box, BookOpen, Sparkles, ArrowRight, Play, Plus } from "lucide-react";
 import "./Start.css";
 
@@ -34,6 +34,7 @@ export function StartPage() {
   const newProject = useStudio((st) => st.newProject);
   const openProject = useStudio((st) => st.openProject);
   const completed = useStudy((st) => st.completed);
+  const courses = useCourses((state) => state.courses);
 
   const current = projects[currentIdx];
 
@@ -41,7 +42,7 @@ export function StartPage() {
     const k = c.lessons.filter((l) => completed[lessonKey(c.id, l.id)]).length;
     return acc + k;
   }, 0);
-  const total = totalLessons();
+  const total = courses.reduce((sum, course) => sum + course.lessons.length, 0);
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
 
   const currentCourse = courses.find((c) =>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useUi } from "@/store/ui";
 import { useStudio } from "@/store/studio";
 import { useStudy, lessonKey } from "@/store/study";
-import { courses } from "@/data/content";
+import { getCourseById } from "@/store/courses";
 import { useTutor, startExerciseFromMessage } from "@/ai/service";
 import { studySuggestions, studioSuggestions, type Suggestion } from "@/ai/suggestions";
 import { buildStudioContext, buildStudyContext } from "@/ai/prompts";
@@ -89,10 +89,11 @@ export function AiChat({ scope, onClose }: AiChatProps) {
     if (st.selectedId && proj?.elements.some((e) => e.id === st.selectedId)) ctxMeta += ` · 1 ${s.ctxSel}`;
   } else {
     const st = useStudy.getState();
-    const c = courses[st.course];
-    const l = c?.lessons[st.lesson];
-    ctxLabel = l ? `${c.title[lang].split(" — ")[0].split(" (")[0]} · ${l.title[lang]}` : s.aiScopeStudy;
-    ctxMeta = `L${String(st.lesson + 1).padStart(2, "0")}${l ? ` · ${l.level}` : ""}`;
+    const c = getCourseById(st.courseId);
+    const l = c?.lessons.find((lesson) => lesson.id === st.lessonId);
+    ctxLabel = l && c ? `${c.title[lang].split(" — ")[0].split(" (")[0]} · ${l.title[lang]}` : s.aiScopeStudy;
+    const lessonNumber = c && l ? c.lessons.findIndex((lesson) => lesson.id === l.id) + 1 : 0;
+    ctxMeta = `L${String(lessonNumber).padStart(2, "0")}${l ? ` · ${l.level}` : ""}`;
   }
 
   return (

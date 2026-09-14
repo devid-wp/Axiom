@@ -4,7 +4,7 @@
 import type { AiExercise, ChatMessage, QuizState, TutorContext } from "./types";
 import type { Lang } from "@/store/ui";
 import type { Quiz } from "@/data/content";
-import { courses } from "@/data/content";
+import { getCourses, getCourseById } from "@/store/courses";
 import { useStudy, lessonKey } from "@/store/study";
 import { useStudio } from "@/store/studio";
 import { useUi } from "@/store/ui";
@@ -122,10 +122,12 @@ function detectDepthHint(msgs: ChatMessage[], lang: Lang): "simple" | "standard"
 }
 
 export function buildStudyContext(): TutorContext {
-  const { course, lesson, completed } = useStudy.getState();
+  const { courseId, lessonId, completed } = useStudy.getState();
   const lang = useUi.getState().lang;
-  const c = courses[course];
-  const l = c.lessons[lesson];
+  const courses = getCourses();
+  const c = getCourseById(courseId) ?? courses[0];
+  const l = c?.lessons.find((item) => item.id === lessonId) ?? c?.lessons[0];
+  if (!c || !l) throw new Error("study course unavailable");
   const done = courses.reduce(
     (acc, cc) => acc + cc.lessons.filter((x) => completed[lessonKey(cc.id, x.id)]).length,
     0
@@ -143,7 +145,7 @@ export function buildStudyContext(): TutorContext {
     lang,
     courseId: c.id,
     courseName: c.title[lang],
-    lessonNum: lesson + 1,
+    lessonNum: c.lessons.findIndex((item) => item.id === l.id) + 1,
     lessonId: l.id,
     lessonTitle: l.title[lang],
     level: l.level,
