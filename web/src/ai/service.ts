@@ -26,7 +26,7 @@ import {
   parseLessonBlock,
   type ExecResult,
 } from "./actions";
-import { useGenerated, type GeneratedLesson } from "@/store/generated";
+import { persistLessonAsCourse } from "@/store/generated";
 
 export type TutorStatus = "idle" | "thinking" | "streaming" | "response" | "error";
 
@@ -268,17 +268,7 @@ export const useTutor = create<TutorState>()((set, get) => ({
           }
 
           if (lesson) {
-            const id = `gen-${Date.now().toString(36)}`;
-            useGenerated.getState().addLesson({
-              id,
-              courseTag: lesson.courseTag,
-              title: lesson.title,
-              duration: lesson.duration,
-              level: lesson.level,
-              body: lesson.body,
-              quiz: lesson.quiz,
-              createdAt: new Date().toISOString(),
-            });
+            persistLessonAsCourse(lesson);
           }
 
           const msgs = useTutor.getState().sessions[scope].messages;
@@ -316,21 +306,10 @@ export const useTutor = create<TutorState>()((set, get) => ({
       const { text, actions, exercise, lesson } = mergeResult(res);
 
       if (lesson) {
-        const id = `gen-${Date.now().toString(36)}`;
-        const generated: GeneratedLesson = {
-          id,
-          courseTag: lesson.courseTag,
-          title: lesson.title,
-          duration: lesson.duration,
-          level: lesson.level,
-          body: lesson.body,
-          quiz: lesson.quiz,
-          createdAt: new Date().toISOString(),
-        };
-        useGenerated.getState().addLesson(generated);
+        persistLessonAsCourse(lesson);
         pushMessage(scope, {
           role: "assistant",
-          content: `${text}\n\n✓ Lesson "${lesson.title.en}" added to courses. Refresh the Study page to see it.`,
+          content: `${text}\n\n✓ Lesson "${lesson.title.en}" saved as a generated course.`,
         });
         patchSession(scope, { status: "response" });
         return;
