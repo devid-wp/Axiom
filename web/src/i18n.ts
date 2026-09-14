@@ -119,6 +119,10 @@ export const STR: Record<Lang, Record<string, string>> = {
     explainThis: "Explain this",
     askTutor: "Ask the AI tutor",
     exploreLede: "Discover architectural styles, structures, materials, and the engineering concepts behind them.",
+    builtinTab: "BUILT-IN",
+    generatedTab: "GENERATED",
+    noGeneratedTitle: "No generated courses yet",
+    noGeneratedHint: "Ask the AI tutor to generate a lesson — it will appear here.",
   },
   ru: {
     start: "СТАРТ",
@@ -235,5 +239,9 @@ export const STR: Record<Lang, Record<string, string>> = {
     explainThis: "Объясни это",
     askTutor: "Спросить ИИ-наставника",
     exploreLede: "Откройте для себя архитектурные стили, конструкции, материалы и инженерные концепции за ними.",
+    builtinTab: "ВСТРОЕННЫЕ",
+    generatedTab: "ОТ ИИ",
+    noGeneratedTitle: "Пока нет созданных курсов",
+    noGeneratedHint: "Попросите ИИ-наставника создать урок — он появится здесь.",
   },
 };

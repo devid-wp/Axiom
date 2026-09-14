@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useUi } from "@/store/ui";
 import { useStudy, lessonKey } from "@/store/study";
 import { STR } from "@/i18n";
-import { useCourses } from "@/store/courses";
+import { getCoursesBySource, useCourses, type CourseSourceFilter } from "@/store/courses";
 import type { Course } from "@/data/content";
 import { guidedTrackForLesson } from "@/guided/lessons";
 import { practiceLesson } from "@/guided/store";
@@ -122,6 +122,7 @@ function Reader() {
 
 export function StudyPage() {
   const [railTab, setRailTab] = useState<"progress" | "ai">("progress");
+  const [sourceTab, setSourceTab] = useState<CourseSourceFilter>("builtin");
   const lang = useUi((s) => s.lang);
   const s = STR[lang];
   const courseId = useStudy((st) => st.courseId);
@@ -130,6 +131,7 @@ export function StudyPage() {
   const selectCourse = useStudy((st) => st.selectCourse);
   const selectLesson = useStudy((st) => st.selectLesson);
   const courses = useCourses((state) => state.courses);
+  const visibleCourses = getCoursesBySource(sourceTab);
   const total = totalLessonsFor(courses);
 
   const done = courses.reduce((acc, c) => {
@@ -155,6 +157,10 @@ export function StudyPage() {
           <div className="study-toc__head">
             <span className="eyebrow">Curriculum</span>
           </div>
+          <div className="study-toc__tabs">
+            <SegTab text={s.builtinTab} active={sourceTab === "builtin"} onClick={() => setSourceTab("builtin")} />
+            <SegTab text={s.generatedTab} active={sourceTab === "generated"} onClick={() => setSourceTab("generated")} />
+          </div>
           <div className="study-toc__progress">
             <div className="study-toc__pct mono">{pct}%</div>
             <div className="study-toc__bar">
@@ -162,7 +168,14 @@ export function StudyPage() {
             </div>
           </div>
           <div className="study-toc__courses">
-            {courses.map((c) => (
+            {visibleCourses.length === 0 && (
+              <div className="study-toc__empty">
+                <span className="study-toc__empty-icon"><Sparkles size={14} /></span>
+                <span className="study-toc__empty-title">{s.noGeneratedTitle}</span>
+                <span className="study-toc__empty-hint">{s.noGeneratedHint}</span>
+              </div>
+            )}
+            {visibleCourses.map((c) => (
               <div key={c.id} className="study-toc__course">
                 <TreeHead
                   text={c.title[lang]}

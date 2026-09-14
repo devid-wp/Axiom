@@ -25,6 +25,35 @@
 .study-toc__head {
   padding: 0 var(--sp-1) var(--sp-2);
 }
+.study-toc__tabs {
+  display: flex;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-1) var(--sp-2);
+}
+.study-toc__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  margin: 0 var(--sp-1);
+  padding: var(--sp-3) var(--sp-2);
+  background: var(--panel);
+  border: 1px dashed var(--line-soft);
+  border-radius: var(--r-sm);
+}
+.study-toc__empty-icon {
+  display: inline-flex;
+  color: var(--accent-tx);
+}
+.study-toc__empty-title {
+  font-size: var(--fs-ui);
+  color: var(--tx2);
+}
+.study-toc__empty-hint {
+  font-size: var(--fs-micro);
+  color: var(--tx4);
+  line-height: 1.5;
+}
 .study-toc__progress {
   display: flex;
   flex-direction: column;
