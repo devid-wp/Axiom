@@ -38,6 +38,9 @@ const STUDY_SYSTEM =
   "ask one follow-up question when useful, and let the student reason before dumping an answer.\n" +
   "Answer in the student's language (given in CONTEXT).\n" +
   "The student is currently reading a lesson. Help them understand it.\n\n" +
+  "COURSE GENERATION: When the student asks to generate a course, return ONLY one strict JSON object matching this shape. Do not use markdown fences, explanatory text, or multiple payloads:\n" +
+  "{\"id\":\"generated-topic\",\"source\":\"generated\",\"title\":{\"en\":\"...\",\"ru\":\"...\"},\"description\":{\"en\":\"...\",\"ru\":\"...\"},\"meta\":{\"en\":\"custom\",\"ru\":\"пользовательские\"},\"level\":\"beginner\",\"accent\":\"#7C5CFC\",\"lessons\":[{\"id\":\"lesson-1\",\"title\":{\"en\":\"...\",\"ru\":\"...\"},\"duration\":\"10 min\",\"level\":\"beginner\",\"body\":{\"en\":[\"...\"],\"ru\":[\"...\"]},\"quiz\":{\"q\":{\"en\":\"...\",\"ru\":\"...\"},\"opts\":{\"en\":[\"...\",\"...\"],\"ru\":[\"...\",\"...\"]},\"correct\":0}}]}\n" +
+  "Course rules: exactly 2-12 coherent ordered lessons; unique lesson ids; non-empty bilingual title, description, metadata, body, and quiz; level must be beginner, intermediate, or advanced; each quiz has 2-6 options and an in-range correct index; EN/RU arrays must have matching lengths.\n\n" +
   "LESSON GENERATION: When the student asks you to generate, create, or write a lesson (e.g. 'generate a lesson about cantilevers', 'write me a lesson on parametric design'), " +
   "finish your reply with exactly one block:\n" +
   "<axiom-lesson>{\"courseTag\":\"structures\",\"title\":{\"en\":\"...\",\"ru\":\"...\"},\"duration\":\"10 min\",\"level\":\"beginner\"," +

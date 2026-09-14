@@ -421,6 +421,30 @@ export interface ParsedLesson {
   };
 }
 
+export interface ParsedCourse {
+  id?: string;
+  source?: "generated";
+  title: { en: string; ru: string };
+  description: { en: string; ru: string };
+  meta: { en: string; ru: string };
+  level: string;
+  accent: string;
+  lessons: unknown[];
+}
+
+/** Strict course JSON parser. Fences, prose, and multiple payloads fail. */
+export function parseCoursePayload(reply: string): { text: string; course?: ParsedCourse } {
+  const text = reply.trim();
+  if (!text.startsWith("{") || !text.endsWith("}")) return { text: reply };
+  try {
+    const raw = JSON.parse(text) as Record<string, unknown>;
+    if (!raw || typeof raw !== "object" || !Array.isArray(raw.lessons)) return { text: reply };
+    return { text: "", course: raw as unknown as ParsedCourse };
+  } catch {
+    return { text: reply };
+  }
+}
+
 /** Parse + validate a <axiom-lesson> block the model may embed for course generation. */
 export function parseLessonBlock(reply: string): { text: string; lesson?: ParsedLesson } {
   const m = reply.match(/<axiom-lesson>([\s\S]*?)<\/axiom-lesson>/i);

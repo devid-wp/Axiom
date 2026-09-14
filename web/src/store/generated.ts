@@ -8,7 +8,7 @@
 
 import { create } from "zustand";
 import type { Course, Lesson } from "@/data/content";
-import type { ParsedLesson } from "@/ai/actions";
+import type { ParsedCourse, ParsedLesson } from "@/ai/actions";
 
 const KEY = "axiom_generated_lessons";
 
@@ -190,7 +190,7 @@ function gList(x: unknown): string[] | null {
 }
 
 /** Validate one lesson payload inside a generated course (lesson ids required). */
-function normalizeCourseLesson(raw: unknown): Lesson | null {
+function normalizeCourseLesson(raw: unknown, strict = false): Lesson | null {
   if (!raw || typeof raw !== "object") return null;
   const v = raw as Record<string, unknown>;
   const title = v.title as Record<string, unknown> | undefined;
@@ -209,9 +209,11 @@ function normalizeCourseLesson(raw: unknown): Lesson | null {
     !Number.isInteger(correct) || (correct as number) < 0 || (correct as number) >= optsEn.length
   ) return null;
   const titleRu = gText(title?.ru) ?? titleEn;
+  if (strict && (!LEVELS.has(gText(v.level) ?? "beginner"))) return null;
   const bodyRu = gList(body?.ru) ?? bodyEn;
   const optsRu = gList(opts?.ru) ?? optsEn;
   if (optsRu.length !== optsEn.length) return null;
+  if (strict && (bodyEn.length > 8 || optsEn.length > 6)) return null;
   return {
     id,
     title: { en: titleEn, ru: titleRu },
@@ -233,7 +235,9 @@ function slugifyTitle(s: string): string {
 }
 
 /** Validate/normalize one persisted generated-course record. Returns null when rejected. */
-export function normalizeGeneratedCourse(raw: unknown): GeneratedCourse | null {
+const LEVELS = new Set(["beginner", "intermediate", "advanced"]);
+
+export function normalizeGeneratedCourse(raw: unknown, strict = false): GeneratedCourse | null {
   if (!raw || typeof raw !== "object") return null;
   const v = raw as Record<string, unknown>;
   if (v.source !== undefined && v.source !== "generated") return null;
@@ -242,23 +246,29 @@ export function normalizeGeneratedCourse(raw: unknown): GeneratedCourse | null {
   if (!titleEn) return null;
   const rawLessons = v.lessons;
   if (!Array.isArray(rawLessons) || rawLessons.length === 0) return null;
+  if (strict && (rawLessons.length < 2 || rawLessons.length > 12)) return null;
   const lessons = rawLessons.flatMap((item) => {
-    const lesson = normalizeCourseLesson(item);
+    const lesson = normalizeCourseLesson(item, strict);
     return lesson ? [lesson] : [];
   });
   if (lessons.length === 0) return null;
+  if (strict && lessons.length !== rawLessons.length) return null;
+  if (new Set(lessons.map((lesson) => lesson.id)).size !== lessons.length) return null;
   const titleRu = gText(title?.ru) ?? titleEn;
   const meta = v.meta as Record<string, unknown> | undefined;
   const metaEn = gText(meta?.en) ?? GENERATED_META.en;
   const description = v.description as Record<string, unknown> | undefined;
   const descriptionEn = gText(description?.en) ?? titleEn;
+  const level = gText(v.level) ?? "beginner";
+  if (strict && (!gText(description?.en) || !gText(description?.ru) || !meta || !gText(meta.en) || !gText(meta.ru) || !LEVELS.has(level))) return null;
+  if (strict && (!gText(title?.ru) || !gText(v.accent))) return null;
   return {
     id: gText(v.id) ?? `generated-${slugifyTitle(titleEn)}`,
     source: "generated",
     title: { en: titleEn, ru: titleRu },
     description: { en: descriptionEn, ru: gText(description?.ru) ?? descriptionEn },
     meta: { en: metaEn, ru: gText(meta?.ru) ?? metaEn },
-    level: gText(v.level) ?? "beginner",
+    level,
     accent: gText(v.accent) ?? GENERATED_ACCENT,
     lessons,
   };
@@ -371,6 +381,13 @@ export function persistLessonAsCourse(lesson: ParsedLesson): void {
       },
     ],
   });
+}
+
+/** Persist one complete, strictly validated multi-lesson generated course. */
+export function persistCourseAsCourse(course: ParsedCourse): void {
+  const normalized = normalizeGeneratedCourse(course, true);
+  if (!normalized) return;
+  useGeneratedCourses.getState().addCourse(normalized);
 }
 
 /** Merge generated lessons into the hardcoded courses array.

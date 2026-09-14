@@ -21,12 +21,13 @@ import { HttpTutorProvider, MockTutorProvider, type TutorMode } from "./provider
 import { buildStudyContext, buildStudioContext, buildSystemPrompt } from "./prompts";
 import {
   executeActions,
+  parseCoursePayload,
   parseActionsBlock,
   parseExerciseBlock,
   parseLessonBlock,
   type ExecResult,
 } from "./actions";
-import { persistLessonAsCourse } from "@/store/generated";
+import { persistCourseAsCourse, persistLessonAsCourse } from "@/store/generated";
 
 export type TutorStatus = "idle" | "thinking" | "streaming" | "response" | "error";
 
@@ -114,12 +115,14 @@ function patchSession(scope: AiScope, patch: Partial<TutorSession>) {
 function mergeResult(res: { reply: string; actions?: AiAction[]; exercise?: AiExercisePayload }) {
   const b = parseActionsBlock(res.reply);
   const ex = parseExerciseBlock(b.text);
-  const lesson = parseLessonBlock(ex.text);
+  const course = parseCoursePayload(ex.text);
+  const lesson = course.course ? { text: course.text } : parseLessonBlock(ex.text);
   return {
     text: lesson.text.trim() || res.reply.trim(),
     actions: res.actions ?? b.actions,
     exercise: res.exercise ?? ex.exercise,
-    lesson: lesson.lesson,
+    lesson: "lesson" in lesson ? lesson.lesson : undefined,
+    course: course.course,
   };
 }
 
@@ -249,7 +252,7 @@ export const useTutor = create<TutorState>()((set, get) => ({
           }
 
           const merged = mergeResult({ reply: accumulated });
-          const { actions: blockActions, exercise: blockExercise, lesson } = merged;
+          const { actions: blockActions, exercise: blockExercise, lesson, course } = merged;
 
           // Text streams carry no out-of-band payload: providers that return
           // structured fields (the offline mock) must be asked once more for
@@ -267,7 +270,9 @@ export const useTutor = create<TutorState>()((set, get) => ({
             }
           }
 
-          if (lesson) {
+          if (course) {
+            persistCourseAsCourse(course);
+          } else if (lesson) {
             persistLessonAsCourse(lesson);
           }
 
@@ -303,7 +308,17 @@ export const useTutor = create<TutorState>()((set, get) => ({
       }
 
       const res = await p.chat(req);
-      const { text, actions, exercise, lesson } = mergeResult(res);
+      const { text, actions, exercise, lesson, course } = mergeResult(res);
+
+      if (course) {
+        persistCourseAsCourse(course);
+        pushMessage(scope, {
+          role: "assistant",
+          content: `${text || "Course generated."}\n\n✓ Course saved to your generated courses.`,
+        });
+        patchSession(scope, { status: "response" });
+        return;
+      }
 
       if (lesson) {
         persistLessonAsCourse(lesson);
