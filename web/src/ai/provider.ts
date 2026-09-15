@@ -5,101 +5,235 @@
    Structured actions are parsed/validated client-side by ai/actions.ts. */
 
 import type { Lang } from "@/store/ui";
-import type { AiAction, AiExercisePayload, TutorChunk, TutorContext, TutorProvider, TutorRequest, TutorResult } from "./types";
+import type { AiAction, AiExercisePayload, TutorChunk, TutorContext, TutorProvider, TutorRequest, TutorRequestOptions, TutorResult, AiProviderId, AiModelId } from "./types";
 import type { ElementKind } from "@/studio/types";
 import { canContain } from "@/studio/domain";
-import { TutorUnavailableError } from "./types";
+import { TutorCancelledError, TutorInvalidResponseError, TutorProviderError, TutorTimeoutError, TutorUnavailableError, isAbortError, signalTimedOut } from "./types";
 import { pickChallenge, challengePayload } from "./challenges";
 
 export type TutorMode = "live" | "mock" | "unknown";
 
+export const AI_MODELS: Readonly<Record<AiProviderId, AiModelId>> = {
+  "axiom-api": "default",
+  mock: "default",
+};
+
+export interface AiProviderSelection {
+  provider: AiProviderId;
+  model: AiModelId;
+}
+
+export function selectAiProvider(mode: TutorMode, reachable: boolean): AiProviderSelection {
+  if (mode === "mock") return { provider: "mock", model: AI_MODELS.mock };
+  if (mode === "live" || reachable) return { provider: "axiom-api", model: AI_MODELS["axiom-api"] };
+  return { provider: "mock", model: AI_MODELS.mock };
+}
+
+/* ------------------------------------------------- request reliability --- */
+/* Commit #9: every request honors AbortSignal + an optional hard deadline.
+   Timeout aborts with a DOMException named "TimeoutError" so providers and
+   the service can tell timeout apart from user cancellation. */
+
+export const TUTOR_DEFAULT_TIMEOUT_MS = 30_000;
+export const TUTOR_REACHABLE_TIMEOUT_MS = 5_000;
+
+function timeoutReason(): unknown {
+  try {
+    return new DOMException("timeout", "TimeoutError");
+  } catch {
+    const e = new Error("timeout");
+    (e as { name: string }).name = "TimeoutError";
+    return e;
+  }
+}
+
+function cancelReason(): unknown {
+  try {
+    return new DOMException("aborted", "AbortError");
+  } catch {
+    const e = new Error("aborted");
+    (e as { name: string }).name = "AbortError";
+    return e;
+  }
+}
+
+/** Throw TutorTimeoutError vs TutorCancelledError for an aborted signal. */
+export function throwIfAborted(signal?: AbortSignal | null): void {
+  if (!signal?.aborted) return;
+  if (signalTimedOut(signal)) throw new TutorTimeoutError();
+  throw new TutorCancelledError();
+}
+
+interface Deadline {
+  signal?: AbortSignal;
+  done: () => void;
+  timedOut: () => boolean;
+}
+
+/** Combine a caller signal with an optional timeout into one signal.
+    The caller MUST call `done()` to clear the timer (generators: in finally). */
+export function withDeadline(opts?: TutorRequestOptions): Deadline {
+  const user = opts?.signal;
+  const ms = opts?.timeoutMs;
+  if (user?.aborted) {
+    if (signalTimedOut(user)) throw new TutorTimeoutError();
+    throw new TutorCancelledError();
+  }
+  if (!ms || ms <= 0 || !Number.isFinite(ms)) {
+    return { signal: user, done: () => {}, timedOut: () => false };
+  }
+  const ctrl = new AbortController();
+  let fired = false;
+  // NOTE: intentionally not unref'd — an in-flight request must keep the
+  // event loop alive until it settles or the deadline fires. Callers own
+  // done() (service releases it on every settle path; chat() in finally).
+  const timer = setTimeout(() => {
+    fired = true;
+    try {
+      ctrl.abort(timeoutReason() as DOMException);
+    } catch {
+      ctrl.abort();
+    }
+  }, ms);
+  const onUserAbort = () => {
+    try {
+      ctrl.abort((user as { reason?: unknown }).reason ?? (cancelReason() as DOMException));
+    } catch {
+      ctrl.abort();
+    }
+  };
+  user?.addEventListener("abort", onUserAbort, { once: true });
+  return {
+    signal: ctrl.signal,
+    done: () => {
+      clearTimeout(timer);
+      try {
+        user?.removeEventListener("abort", onUserAbort);
+      } catch {
+        /* ignore */
+      }
+    },
+    timedOut: () => fired || signalTimedOut(ctrl.signal) || signalTimedOut(user),
+  };
+}
+
+/** Map a failure seen under `deadline` to its distinct error. Known provider
+    errors pass through; DOM aborts become timeout vs cancelled; genuine
+    fetch TypeErrors stay network (TutorUnavailableError, preserved). */
+function normalizeHttpError(e: unknown, dl: Deadline, provider: AiProviderId): unknown {
+  if (
+    e instanceof TutorTimeoutError ||
+    e instanceof TutorCancelledError ||
+    e instanceof TutorProviderError ||
+    e instanceof TutorUnavailableError ||
+    e instanceof TutorInvalidResponseError
+  ) return e;
+  if (dl.timedOut() || signalTimedOut(dl.signal)) return new TutorTimeoutError();
+  if (dl.signal?.aborted || isAbortError(e)) return new TutorCancelledError();
+  if (e instanceof TypeError) return new TutorUnavailableError("network");
+  return new TutorUnavailableError("network");
+}
+
+/** Cancellable sleep. Rejects with timeout vs cancellation distinctly. */
+export function cancellableDelay(ms: number, signal?: AbortSignal | null): Promise<void> {
+  if (!signal) return new Promise((r) => setTimeout(r, ms));
+  if (signal.aborted) {
+    if (signalTimedOut(signal)) return Promise.reject(new TutorTimeoutError());
+    return Promise.reject(new TutorCancelledError());
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      if (signalTimedOut(signal)) reject(new TutorTimeoutError());
+      else reject(new TutorCancelledError());
+    };
+    const cleanup = () => {
+      try {
+        signal.removeEventListener("abort", onAbort);
+      } catch {
+        /* ignore */
+      }
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** Race a stream read against abort so a cancelled generator settles instead
+    of hanging on a pending read. */
+async function abortableRead<T>(read: () => Promise<T>, signal?: AbortSignal | null): Promise<T> {
+  if (!signal) return read();
+  throwIfAborted(signal);
+  let onAbort: (() => void) | null = null;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => {
+      if (signalTimedOut(signal)) reject(new TutorTimeoutError());
+      else reject(new TutorCancelledError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([read(), aborted]);
+  } finally {
+    try {
+      if (onAbort) signal.removeEventListener("abort", onAbort);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 /* ---------------------------------------------------------------- live --- */
 
 export class HttpTutorProvider implements TutorProvider {
+  readonly id = "axiom-api" as const;
   name = "axiom-api";
   private base = "/api/ai/status";
 
-  /** Client-side OpenRouter key (Vite env). The server path (/api/ai/tutor,
-      key held server-side) is preferred whenever it is configured. */
-  private clientKey(): string {
-    try {
-      return (import.meta as any).env?.VITE_AI_API_KEY || "";
-    } catch {
-      return "";
-    }
-  }
-
-  private clientModel(): string {
-    try {
-      return (import.meta as any).env?.VITE_AI_MODEL || "openrouter/auto";
-    } catch {
-      return "openrouter/auto";
-    }
-  }
-
   private async post(
     req: TutorRequest,
-    stream: boolean
+    stream: boolean,
+    signal?: AbortSignal | null
   ): Promise<{ reply: string } | AsyncGenerator<TutorChunk>> {
-    const key = this.clientKey();
-    // Prefer our own server endpoint (secret stays server-side). Only talk
-    // to OpenRouter directly when the server is unconfigured but a client
-    // key exists.
-    let useDirect = false;
-    if (key) {
-      try {
-        const st = await fetch(this.base);
-        const data = (await st.json()) as { configured?: boolean };
-        useDirect = data.configured !== true;
-      } catch {
-        useDirect = true;
-      }
-    }
-    if (!useDirect) {
-      const res = await fetch("/api/ai/tutor", {
+    throwIfAborted(signal);
+    const res = await fetch("/api/ai/tutor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: req.messages, lang: req.lang, stream }),
+        signal: signal ?? undefined,
       });
-      if (res.status === 503) throw new TutorUnavailableError("unconfigured");
-      if (!res.ok) throw new Error(`tutor http ${res.status}`);
-      if (stream) return this.readSse(res);
+      if (res.status === 503) throw new TutorProviderError({ code: "unconfigured", provider: this.id, retryable: false });
+      if (!res.ok) throw new TutorProviderError({ code: "request_failed", provider: this.id, retryable: true });
+      if (stream) return this.readSse(res, signal);
       const data = (await res.json()) as { reply?: string };
-      if (!data.reply) throw new Error("empty tutor reply");
+      if (!data.reply) throw new TutorProviderError({ code: "invalid_response", provider: this.id, retryable: false });
       return { reply: data.reply };
-    }
-    // Direct OpenRouter call (OpenAI chat-completions shape).
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        model: this.clientModel(),
-        messages: req.messages,
-        temperature: 0.4,
-        max_tokens: 800,
-        stream,
-      }),
-    });
-    if (!res.ok) throw new Error(`openrouter http ${res.status}`);
-    if (stream) return this.readOpenRouterStream(res);
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const reply = data.choices?.[0]?.message?.content ?? "";
-    if (!reply) throw new Error("empty tutor reply");
-    return { reply };
   }
 
   /** SSE dialect of our own /api/ai/tutor endpoint ({ delta } frames). */
-  private async *readSse(res: Response): AsyncGenerator<TutorChunk> {
-    if (!res.body) throw new Error("no response body");
+  private async *readSse(res: Response, signal?: AbortSignal | null): AsyncGenerator<TutorChunk> {
+    if (!res.body) throw new TutorInvalidResponseError("no response body");
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     try {
       while (true) {
-        const { done, value } = await reader.read();
+        let read: ReadableStreamReadResult<Uint8Array>;
+        try {
+          read = await abortableRead(() => reader.read(), signal);
+        } catch (e) {
+          try {
+            await reader.cancel();
+          } catch {
+            /* ignore */
+          }
+          throw e;
+        }
+        const { done, value } = read;
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -162,93 +296,122 @@ export class HttpTutorProvider implements TutorProvider {
     }
   }
 
-  async chat(req: TutorRequest): Promise<TutorResult> {
+  async chat(req: TutorRequest, opts?: TutorRequestOptions): Promise<TutorResult> {
+    const dl = withDeadline(opts);
     let out: { reply: string } | AsyncGenerator<TutorChunk>;
     try {
-      out = await this.post(req, false);
+      out = await this.post(req, false, dl.signal);
     } catch (e) {
-      if (e instanceof TutorUnavailableError) throw e;
-      throw new TutorUnavailableError("network");
+      throw normalizeHttpError(e, dl, this.id);
+    } finally {
+      dl.done();
     }
-    if (Symbol.asyncIterator in Object(out)) throw new Error("unexpected stream");
+    if (Symbol.asyncIterator in Object(out)) throw new TutorInvalidResponseError("unexpected stream");
     return out as TutorResult;
   }
 
-  async *chatStream(req: TutorRequest): AsyncGenerator<TutorChunk> {
+  async *chatStream(req: TutorRequest, opts?: TutorRequestOptions): AsyncGenerator<TutorChunk> {
+    const dl = withDeadline(opts);
     let out: { reply: string } | AsyncGenerator<TutorChunk>;
     try {
-      out = await this.post(req, true);
-    } catch (e) {
-      if (e instanceof TutorUnavailableError) throw e;
-      throw new TutorUnavailableError("network");
+      try {
+        out = await this.post(req, true, dl.signal);
+      } catch (e) {
+        throw normalizeHttpError(e, dl, this.id);
+      }
+      if (Symbol.asyncIterator in Object(out)) {
+        try {
+          yield* out as AsyncGenerator<TutorChunk>;
+        } catch (e) {
+          throw normalizeHttpError(e, dl, this.id);
+        }
+        return;
+      }
+      // Server ignored the stream flag and answered in one shot.
+      throwIfAborted(dl.signal);
+      yield { type: "text", delta: (out as { reply: string }).reply };
+      yield { type: "done" };
+    } finally {
+      dl.done();
     }
-    if (Symbol.asyncIterator in Object(out)) {
-      yield* out as AsyncGenerator<TutorChunk>;
-      return;
-    }
-    // Server ignored the stream flag and answered in one shot.
-    yield { type: "text", delta: (out as { reply: string }).reply };
-    yield { type: "done" };
   }
 
-  async reachable(): Promise<boolean> {
-    if (this.clientKey()) return true;
+  async reachable(opts?: TutorRequestOptions): Promise<boolean> {
+    const ms = opts?.timeoutMs ?? TUTOR_REACHABLE_TIMEOUT_MS;
+    const dl = withDeadline({ signal: opts?.signal, timeoutMs: ms });
     try {
-      const res = await fetch(this.base);
+      throwIfAborted(dl.signal);
+      const res = await fetch(this.base, { signal: dl.signal ?? undefined });
       if (!res.ok) return false;
       const data = (await res.json()) as { configured?: boolean };
       return data.configured === true;
     } catch {
       return false;
+    } finally {
+      dl.done();
     }
   }
 }
 
 /* ----------------------------------------------------------------- mock --- */
 
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 export class MockTutorProvider implements TutorProvider {
+  readonly id = "mock" as const;
   name = "mock";
 
-  async chat(req: TutorRequest): Promise<TutorResult> {
-    await delay(420);
-    const userTurns = req.messages
-      .filter((m) => m.role === "user")
-      .map((m) => m.content.trim())
-      .filter(Boolean);
-    const question = userTurns[userTurns.length - 1] ?? "";
-    const ctx = parseContext(req.messages);
-    const lang = (ctx?.lang as Lang) ?? req.lang;
+  async chat(req: TutorRequest, opts?: TutorRequestOptions): Promise<TutorResult> {
+    const dl = withDeadline(opts);
+    try {
+      await cancellableDelay(420, dl.signal);
+      throwIfAborted(dl.signal);
+      const userTurns = req.messages
+        .filter((m) => m.role === "user")
+        .map((m) => m.content.trim())
+        .filter(Boolean);
+      const question = userTurns[userTurns.length - 1] ?? "";
+      const ctx = parseContext(req.messages);
+      const lang = (ctx?.lang as Lang) ?? req.lang;
 
-    if (question.includes("simulate-error")) throw new Error("mock injection error");
-    if (question.includes("simulate-unavailable")) throw new TutorUnavailableError("simulated");
-    if (question.includes("simulate-invalid-action")) {
-      return {
-        reply:
-          `I prepared an action, but it was not valid, so nothing changed. ` +
-          `<axiom-actions>[{"kind":"create_element","elementType":"mystery"}]</axiom-actions> ` +
-          `If you like, tell me what you wanted to build and I will try again.`,
-      };
-    }
-    if (question.includes("simulate-malformed")) {
-      return {
-        reply:
-          `Here is a broken action block: <axiom-actions>[not valid json</axiom-actions>. ` +
-          `The app rejected it safely, so nothing changed on the sheet.`,
-      };
-    }
+      if (question.includes("simulate-error")) throw new Error("mock injection error");
+      if (question.includes("simulate-unavailable")) throw new TutorUnavailableError("simulated");
+      if (question.includes("simulate-invalid-action")) {
+        return {
+          reply:
+            `I prepared an action, but it was not valid, so nothing changed. ` +
+            `<axiom-actions>[{"kind":"create_element","elementType":"mystery"}]</axiom-actions> ` +
+            `If you like, tell me what you wanted to build and I will try again.`,
+        };
+      }
+      if (question.includes("simulate-malformed")) {
+        return {
+          reply:
+            `Here is a broken action block: <axiom-actions>[not valid json</axiom-actions>. ` +
+            `The app rejected it safely, so nothing changed on the sheet.`,
+        };
+      }
 
-    return tutorAnswer(ctx, question, lang, userTurns);
+      return tutorAnswer(ctx, question, lang, userTurns);
+    } finally {
+      dl.done();
+    }
   }
 
-  async *chatStream(req: TutorRequest): AsyncGenerator<TutorChunk> {
-    const result = await this.chat(req);
+  async *chatStream(req: TutorRequest, opts?: TutorRequestOptions): AsyncGenerator<TutorChunk> {
+    // Single generation: one chat call, then word-chunks plus structured
+    // payload chunks — the service must NOT issue a second chat() to recover
+    // actions/exercise (Commit #9: no duplicate generation requests).
+    const result = await this.chat(req, opts);
+    const signal = opts?.signal;
     const words = result.reply.split(/(\s+)/);
     for (const word of words) {
-      await delay(15 + Math.random() * 25);
+      throwIfAborted(signal);
+      await cancellableDelay(15 + Math.random() * 25, signal);
+      throwIfAborted(signal);
       yield { type: "text", delta: word };
     }
+    throwIfAborted(signal);
+    if (result.actions?.length) yield { type: "actions", actions: result.actions };
+    if (result.exercise) yield { type: "exercise", exercise: result.exercise };
     yield { type: "done" };
   }
 }

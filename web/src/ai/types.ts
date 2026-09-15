@@ -163,6 +163,13 @@ export interface TutorRequest {
   lang: Lang;
 }
 
+/** Per-request controls. Passed through the provider boundary; providers
+    must respect `signal` (abort) and treat `timeoutMs` as a hard deadline. */
+export interface TutorRequestOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
 export interface TutorResult {
   reply: string;
   /** structured AXIOM actions the model proposeed (validated before use) */
@@ -171,16 +178,113 @@ export interface TutorResult {
   exercise?: AiExercisePayload;
 }
 
-/** Provider boundary — replaceable. Implementations must not assume a UI. */
+/** Provider boundary — replaceable. Implementations must not assume a UI.
+    `opts.signal` aborts the request (user cancellation or deadline);
+    providers must surface timeout/cancellation distinctly (see below). */
 export interface TutorProvider {
-  name: string;
-  chat(req: TutorRequest): Promise<TutorResult>;
-  chatStream?(req: TutorRequest): AsyncGenerator<TutorChunk>;
+  readonly id: AiProviderId;
+  readonly name: string;
+  chat(req: TutorRequest, opts?: TutorRequestOptions): Promise<TutorResult>;
+  chatStream?(req: TutorRequest, opts?: TutorRequestOptions): AsyncGenerator<TutorChunk>;
+}
+
+/** Providers supported by AXIOM. Keep this list small and explicit. */
+export type AiProviderId = "axiom-api" | "mock";
+
+export type AiModelId = "default";
+
+export interface AiProviderErrorInfo {
+  code: "unconfigured" | "unavailable" | "request_failed" | "invalid_response";
+  provider: AiProviderId;
+  retryable: boolean;
+}
+
+export class TutorProviderError extends Error {
+  readonly info: AiProviderErrorInfo;
+
+  constructor(info: AiProviderErrorInfo, message = "AI provider unavailable") {
+    super(message);
+    this.name = "TutorProviderError";
+    this.info = info;
+  }
 }
 
 export type TutorChunk =
   | { type: "text"; delta: string }
+  | { type: "actions"; actions: AiAction[] }
+  | { type: "exercise"; exercise: AiExercisePayload }
   | { type: "done" };
+
+/* --------------------------------------- reliable-request error taxonomy --- */
+/* Commit #9: exactly one kind per failure so the service can distinguish
+   timeout vs cancellation vs network vs provider vs invalid response.
+   Commit #8's TutorProviderError ({code, provider, retryable}) and
+   TutorUnavailableError are preserved; the new errors cover the remaining
+   kinds and toAiErrorKind() maps every failure to one AiErrorKind. */
+
+export type AiErrorKind = "timeout" | "cancelled" | "network" | "provider" | "invalid";
+
+/** Deadline exceeded (service timeout or provider-level deadline). */
+export class TutorTimeoutError extends Error {
+  constructor(msg = "tutor request timed out") {
+    super(msg);
+    this.name = "TutorTimeoutError";
+  }
+}
+
+/** User (or stale-request) cancellation via AbortController. */
+export class TutorCancelledError extends Error {
+  constructor(msg = "tutor request cancelled") {
+    super(msg);
+    this.name = "TutorCancelledError";
+  }
+}
+
+/** The provider answered 2xx but the payload was empty/malformed. Never
+    persisted; surfaced so callers show retry instead of silent success. */
+export class TutorInvalidResponseError extends Error {
+  constructor(msg = "invalid tutor response") {
+    super(msg);
+    this.name = "TutorInvalidResponseError";
+  }
+}
+
+/** True for DOM aborts (fetch/stream reads) regardless of the abort reason. */
+export function isAbortError(e: unknown): boolean {
+  return (
+    !!e &&
+    typeof e === "object" &&
+    ((e as { name?: unknown }).name === "AbortError" ||
+      (e as { name?: unknown }).name === "TimeoutError")
+  );
+}
+
+/** True when the signal aborted because a deadline fired (vs user cancel). */
+export function signalTimedOut(signal?: AbortSignal | null): boolean {
+  if (!signal) return false;
+  const reason = (signal as { reason?: unknown }).reason;
+  if (reason == null) return false;
+  if (typeof DOMException !== "undefined" && reason instanceof DOMException) {
+    return reason.name === "TimeoutError";
+  }
+  return (reason as { name?: unknown }).name === "TimeoutError";
+}
+
+/** Map any request failure to exactly one AiErrorKind. */
+export function toAiErrorKind(e: unknown): AiErrorKind {
+  if (e instanceof TutorTimeoutError) return "timeout";
+  if (e instanceof TutorCancelledError) return "cancelled";
+  if (e instanceof TutorInvalidResponseError) return "invalid";
+  if (e instanceof TutorProviderError) {
+    if (e.info.code === "invalid_response") return "invalid";
+    if (e.info.code === "unconfigured" || e.info.code === "unavailable") return "network";
+    return "provider";
+  }
+  if (isAbortError(e)) return "cancelled";
+  if (e instanceof TutorUnavailableError) return "network";
+  if (e instanceof TypeError) return "network";
+  return "provider";
+}
 
 /** Raised when the provider is not configured/reachable (falls back to Mock). */
 export class TutorUnavailableError extends Error {

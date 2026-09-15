@@ -45,6 +45,7 @@ export function AiChat({ scope, onClose }: AiChatProps) {
   const ask = useTutor((st) => st.ask);
   const retry = useTutor((st) => st.retry);
   const clear = useTutor((st) => st.clear);
+  const cancel = useTutor((st) => st.cancel);
   const confirmPending = useTutor((st) => st.confirmPending);
   const cancelPending = useTutor((st) => st.cancelPending);
   const clearExercise = useTutor((st) => st.clearExercise);
@@ -236,6 +237,9 @@ export function AiChat({ scope, onClose }: AiChatProps) {
               <i />
             </span>
             {s.aiThinking}…
+            <button className="ai__retry mono" onClick={() => cancel(scope)}>
+              {s.aiCancel}
+            </button>
           </div>
         )}
         {streaming && (
@@ -246,6 +250,9 @@ export function AiChat({ scope, onClose }: AiChatProps) {
               <i />
             </span>
             {s.aiThinking}…
+            <button className="ai__retry mono" onClick={() => cancel(scope)}>
+              {s.aiCancel}
+            </button>
           </div>
         )}
         {session.status === "error" && (

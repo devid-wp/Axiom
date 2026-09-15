@@ -9,15 +9,24 @@ import { STR } from "@/i18n";
 import type {
   AiAction,
   AiExercise,
-  AiExercisePayload,
   AiScope,
   ChatMessage,
   TutorRequest,
   TutorProvider,
-  TutorChunk,
 } from "./types";
-import { isDestructive, TutorUnavailableError } from "./types";
-import { HttpTutorProvider, MockTutorProvider, type TutorMode } from "./provider";
+import {
+  isDestructive,
+  signalTimedOut,
+  toAiErrorKind,
+  TutorCancelledError,
+  TutorInvalidResponseError,
+  TutorTimeoutError,
+  TutorUnavailableError,
+  type AiErrorKind,
+  type AiExercisePayload,
+  type TutorRequestOptions,
+} from "./types";
+import { HttpTutorProvider, MockTutorProvider, selectAiProvider, type TutorMode } from "./provider";
 import { buildStudyContext, buildStudioContext, buildSystemPrompt } from "./prompts";
 import {
   executeActions,
@@ -27,7 +36,7 @@ import {
   parseLessonBlock,
   type ExecResult,
 } from "./actions";
-import { persistCourseAsCourse, persistLessonAsCourse } from "@/store/generated";
+import { persistCourseAsCourse, persistLessonAsCourse, normalizeGeneratedCourse } from "@/store/generated";
 
 export type TutorStatus = "idle" | "thinking" | "streaming" | "response" | "error";
 
@@ -41,7 +50,25 @@ export interface TutorSession {
   status: TutorStatus;
   lastQuestion?: string;
   pending: AiPending | null;
+  /** Why the last request failed (null when idle/successful). Lets callers
+      distinguish timeout vs cancellation vs network vs provider vs invalid. */
+  errorKind: AiErrorKind | null;
 }
+
+/** Per-ask controls (Commit #9). `timeoutMs` bounds the whole request;
+    `signal` lets an outer owner cancel it. Both are optional. */
+export interface AiAskOptions {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+/** Hard deadline for one ask() (service owns it; the provider only sees the
+    resulting AbortSignal). Exported for tests. */
+export const DEFAULT_AI_TIMEOUT_MS = 30_000;
+/** Deadline for the look-at-result follow-up (best-effort, never blocks). */
+export const FOLLOWUP_TIMEOUT_MS = 15_000;
+/** Deadline for the live-probe inside getProvider. */
+export const REACHABLE_TIMEOUT_MS = 5_000;
 
 export interface ActionFlash {
   summary: string;
@@ -49,7 +76,47 @@ export interface ActionFlash {
   stamp: number;
 }
 
-const freshSession = (): TutorSession => ({ messages: [], status: "idle", pending: null });
+const freshSession = (): TutorSession => ({ messages: [], status: "idle", pending: null, errorKind: null });
+
+/* --------------------------------------- in-flight request identity --- */
+/* Commit #9: one AbortController + one monotonically increasing id per scope.
+   Every patch first checks isCurrent(id); late/stale completions are dropped
+   so they can never clobber a newer request or resurrect loading state. */
+const controllers: Record<AiScope, AbortController | null> = { study: null, studio: null };
+const activeSeq: Record<AiScope, number> = { study: 0, studio: 0 };
+
+function timeoutAbortReason(): unknown {
+  try {
+    return new DOMException("timeout", "TimeoutError");
+  } catch {
+    const e = new Error("timeout");
+    (e as { name: string }).name = "TimeoutError";
+    return e;
+  }
+}
+
+function linkExternalSignal(ctrl: AbortController, ext?: AbortSignal | null): void {
+  if (!ext) return;
+  if (ext.aborted) {
+    try {
+      ctrl.abort((ext as { reason?: unknown }).reason ?? new DOMException("aborted", "AbortError"));
+    } catch {
+      ctrl.abort();
+    }
+    return;
+  }
+  ext.addEventListener(
+    "abort",
+    () => {
+      try {
+        ctrl.abort((ext as { reason?: unknown }).reason ?? new DOMException("aborted", "AbortError"));
+      } catch {
+        ctrl.abort();
+      }
+    },
+    { once: true }
+  );
+}
 
 interface TutorState {
   sessions: Record<AiScope, TutorSession>;
@@ -57,9 +124,12 @@ interface TutorState {
   exercise: AiExercise | null;
   exerciseFresh: boolean;
   lastAction: ActionFlash | null;
-  ask: (scope: AiScope, question: string) => Promise<void>;
+  ask: (scope: AiScope, question: string, opts?: AiAskOptions) => Promise<void>;
   retry: (scope: AiScope) => Promise<void>;
   clear: (scope: AiScope) => void;
+  /** Abort the in-flight ask() for this scope, if any. Loading always
+      clears; the user's question is kept so they can retry. */
+  cancel: (scope: AiScope) => void;
   confirmPending: (scope: AiScope) => Promise<void>;
   cancelPending: (scope: AiScope) => void;
   setExercise: (e: AiExercise) => void;
@@ -72,17 +142,18 @@ interface TutorState {
 const http = new HttpTutorProvider();
 const mock = new MockTutorProvider();
 
-async function getProvider(): Promise<TutorProvider> {
+async function getProvider(signal?: AbortSignal): Promise<TutorProvider> {
   const mode = useTutor.getState().mode;
   if (mode === "live") return http;
   if (mode === "mock") return mock;
-  const reachable = await http.reachable();
-  if (reachable) {
-    useTutor.setState({ mode: "live" });
-    return http;
+  const reachable = await http.reachable({ signal, timeoutMs: REACHABLE_TIMEOUT_MS });
+  if (signal?.aborted) {
+    if (signalTimedOut(signal)) throw new TutorTimeoutError();
+    throw new TutorCancelledError();
   }
-  useTutor.setState({ mode: "mock" });
-  return mock;
+  const selection = selectAiProvider(mode, reachable);
+  useTutor.setState({ mode: selection.provider === "axiom-api" ? "live" : "mock" });
+  return selection.provider === "axiom-api" ? http : mock;
 }
 
 function buildRequest(scope: AiScope, question: string): TutorRequest {
@@ -155,8 +226,10 @@ function flashFor(res: ExecResult, lang: Lang, msg?: string): ActionFlash {
 }
 
 /** Execute a batch; on success flash the affected objects and run the bounded
-    look-at-result follow-up for the live provider. Returns the final text. */
-async function performActions(scope: AiScope, actions: AiAction[], text: string, providerName: string, lang: Lang): Promise<ChatMessage> {
+    look-at-result follow-up for the live provider. Returns the final text.
+    `signal` (Commit #9) skips the follow-up when the request was cancelled
+    and bounds it with FOLLOWUP_TIMEOUT_MS so it can never hang the ask. */
+async function performActions(scope: AiScope, actions: AiAction[], text: string, providerName: string, lang: Lang, signal?: AbortSignal): Promise<ChatMessage> {
   const res = executeActions(actions);
   if (!res.changed) {
     return {
@@ -169,20 +242,47 @@ async function performActions(scope: AiScope, actions: AiAction[], text: string,
   useTutor.getState().setFlash(flash);
 
   let finalText = text;
-  if (providerName === "axiom-api") {
+  if (providerName === "axiom-api" && !signal?.aborted) {
+    const followCtrl = new AbortController();
+    // Best-effort follow-up: bounded, never hangs the ask.
+    const followTimer = setTimeout(() => {
+      try {
+        followCtrl.abort();
+      } catch {
+        /* ignore */
+      }
+    }, FOLLOWUP_TIMEOUT_MS);
+    if (signal) {
+      signal.addEventListener(
+        "abort",
+        () => {
+          try {
+            followCtrl.abort();
+          } catch {
+            /* ignore */
+          }
+        },
+        { once: true }
+      );
+    }
     try {
-      const follow = await http.chat({
-        lang,
-        messages: [
-          { role: "system", content: buildSystemPrompt(buildStudioContext(useTutor.getState().exercise)) },
-          { role: "user", content: lastUserQuestion(scope) },
-          { role: "assistant", content: text },
-          { role: "user", content: `OUTCOME: ${flash.summary}. Now reply to the student describing what just happened on the sheet.` },
-        ],
-      });
+      const follow = await http.chat(
+        {
+          lang,
+          messages: [
+            { role: "system", content: buildSystemPrompt(buildStudioContext(useTutor.getState().exercise)) },
+            { role: "user", content: lastUserQuestion(scope) },
+            { role: "assistant", content: text },
+            { role: "user", content: `OUTCOME: ${flash.summary}. Now reply to the student describing what just happened on the sheet.` },
+          ],
+        },
+        { signal: followCtrl.signal }
+      );
       finalText = stripReBlocks(follow.reply) || text;
     } catch {
       finalText = `${text}\n\n${flash.summary}`;
+    } finally {
+      clearTimeout(followTimer);
     }
   } else {
     finalText = `${text}\n\n${flash.summary}`;
@@ -211,107 +311,120 @@ export const useTutor = create<TutorState>()((set, get) => ({
   exerciseFresh: false,
   lastAction: null,
 
-  ask: async (scope, question) => {
+  ask: async (scope, question, askOpts) => {
     const q = question.trim();
     // One in-flight request per scope: overlapping asks interleave their
     // message patches and the later one is contextualized from stale state.
     const busy = get().sessions[scope].status === "thinking" || get().sessions[scope].status === "streaming";
     if (!q || busy) return;
+
+    /* Request identity (Commit #9): one id + one AbortController per ask.
+       Every state patch below applies only while this id is current; late
+       completions from a cancelled/superseded request are dropped. */
+    const id = activeSeq[scope] + 1;
+    activeSeq[scope] = id;
+    const ctrl = new AbortController();
+    controllers[scope] = ctrl;
+    linkExternalSignal(ctrl, askOpts?.signal);
+    const timeoutMs = askOpts?.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    // Not unref'd: an in-flight ask must keep the loop alive until it
+    // settles; release() clears this timer on every settle path.
+    if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
+      timer = setTimeout(() => {
+        try {
+          ctrl.abort(timeoutAbortReason() as DOMException);
+        } catch {
+          ctrl.abort();
+        }
+      }, timeoutMs);
+    }
+    const signal = ctrl.signal;
+    const reqOpts: TutorRequestOptions = { signal };
+    const isCurrent = () => activeSeq[scope] === id && controllers[scope] === ctrl;
+    const release = () => {
+      if (timer) clearTimeout(timer);
+      if (controllers[scope] === ctrl) controllers[scope] = null;
+    };
+    const dropPlaceholderIfEmpty = (idx: number) => {
+      const msgs = useTutor.getState().sessions[scope].messages;
+      const m = msgs[idx];
+      if (m && m.role === "assistant" && m.content === "" && !m.actions && !m.exercise && !m.pending) {
+        patchSession(scope, { messages: msgs.filter((_, i) => i !== idx) });
+      }
+    };
+    const abortedError = (): Error =>
+      signalTimedOut(signal) ? new TutorTimeoutError() : new TutorCancelledError("stale");
+
+    /* Classify any failure exactly once. Deadline expiry is an error
+       (retryable timeout); explicit cancellation goes idle so the user can
+       simply ask again. Loading always clears via the caller's patch. */
+    const classify = (e: unknown): { status: TutorStatus; errorKind: AiErrorKind } => {
+      if (signalTimedOut(signal) || e instanceof TutorTimeoutError) return { status: "error", errorKind: "timeout" };
+      if (signal.aborted || e instanceof TutorCancelledError) return { status: "idle", errorKind: "cancelled" };
+      return { status: "error", errorKind: toAiErrorKind(e) };
+    };
+
     const session = get().sessions[scope];
-    patchSession(scope, { messages: [...session.messages, { role: "user", content: q }], lastQuestion: q });
+    patchSession(scope, { messages: [...session.messages, { role: "user", content: q }], lastQuestion: q, errorKind: null });
     patchSession(scope, { status: "thinking" });
 
     const req = buildRequest(scope, q);
     let provider: TutorProvider;
     try {
-      provider = await getProvider();
-    } catch {
-      patchSession(scope, { status: "error" });
+      provider = await getProvider(signal);
+    } catch (e) {
+      // Probe failed or was aborted: never leave loading behind, and never
+      // let a stale probe touch a newer request.
+      if (!isCurrent()) {
+        release();
+        return;
+      }
+      release();
+      patchSession(scope, classify(e));
       return;
     }
 
-    const deliver = async (p: TutorProvider): Promise<void> => {
-      if (p.chatStream) {
-        try {
-          const streamReq = buildRequest(scope, q);
-          patchSession(scope, { status: "streaming" });
-          pushMessage(scope, { role: "assistant", content: "" });
-          let accumulated = "";
-
-          for await (const chunk of p.chatStream(streamReq)) {
-            if (chunk.type === "text") {
-              accumulated += chunk.delta;
-              const msgs = useTutor.getState().sessions[scope].messages;
-              const lastIdx = msgs.length - 1;
-              patchSession(scope, {
-                messages: msgs.map((m, i) => (i === lastIdx ? { ...m, content: accumulated } : m)),
-              });
-            } else if (chunk.type === "done") {
-              break;
-            }
-          }
-
-          const merged = mergeResult({ reply: accumulated });
-          const { actions: blockActions, exercise: blockExercise, lesson, course } = merged;
-
-          // Text streams carry no out-of-band payload: providers that return
-          // structured fields (the offline mock) must be asked once more for
-          // them, otherwise their actions would be silently dropped while the
-          // text claims success. Live models embed <axiom-actions> blocks.
-          let actions = blockActions;
-          let exercise = blockExercise;
-          if (p.name === "mock") {
-            try {
-              const full = await p.chat(streamReq);
-              if (full.actions?.length) actions = full.actions;
-              if (full.exercise) exercise = full.exercise;
-            } catch {
-              /* keep whatever the text stream carried */
-            }
-          }
-
-          if (course) {
-            persistCourseAsCourse(course);
-          } else if (lesson) {
-            persistLessonAsCourse(lesson);
-          }
-
-          const msgs = useTutor.getState().sessions[scope].messages;
-          const lastIdx = msgs.length - 1;
-
-          if (actions.length > 0 && actions.some(isDestructive)) {
-            patchSession(scope, {
-              messages: msgs.map((m, i) => (i === lastIdx ? { ...m, pending: true } : m)),
-              pending: { actions, note: accumulated },
-              status: "response",
-            });
-            return;
-          }
-          if (actions.length > 0) {
-            const msg = await performActions(scope, actions, accumulated, p.name, req.lang);
-            patchSession(scope, {
-              messages: [...msgs.slice(0, lastIdx), msg],
-              status: "response",
-            });
-            return;
-          }
-          patchSession(scope, {
-            messages: msgs.map((m, i) =>
-              i === lastIdx ? { ...m, content: accumulated, exercise: exercise ?? undefined } : m
-            ),
-            status: "response",
-          });
-          return;
-        } catch {
-          /* streaming failed, fall through to non-streaming */
-        }
+    /* Persist exactly once, only for a current, non-aborted completion.
+       Malformed payloads never reach the stores: the persist helpers
+       validate strictly and no-op on anything invalid. */
+    const persistOnce = (
+      lesson: Parameters<typeof persistLessonAsCourse>[0] | undefined,
+      course: Parameters<typeof persistCourseAsCourse>[0] | undefined
+    ) => {
+      if (!isCurrent() || signal.aborted) return;
+      try {
+        if (course) persistCourseAsCourse(course);
+        else if (lesson) persistLessonAsCourse(lesson);
+      } catch {
+        /* persistence is best-effort; the chat answer still stands */
       }
+    };
 
-      const res = await p.chat(req);
+    /* Single exit for failures: clears loading in every case and records
+       the exact error kind (timeout vs cancelled vs network vs
+       provider vs invalid). */
+    const fail = (e: unknown, placeholderIdx: number | null) => {
+      if (!isCurrent()) return;
+      release();
+      if (placeholderIdx !== null) dropPlaceholderIfEmpty(placeholderIdx);
+      patchSession(scope, classify(e));
+    };
+
+    const deliverChat = async (p: TutorProvider): Promise<void> => {
+      const res = await p.chat(req, reqOpts);
+      if (!isCurrent()) throw new TutorCancelledError("stale");
+      if (signal.aborted) throw abortedError();
       const { text, actions, exercise, lesson, course } = mergeResult(res);
 
       if (course) {
-        persistCourseAsCourse(course);
+        // Strict gate: malformed courses never reach persistence and never
+        // get a false "saved" claim — they surface as invalid responses.
+        if (!normalizeGeneratedCourse(course, true)) {
+          throw new TutorInvalidResponseError("invalid course payload");
+        }
+        persistOnce(undefined, course);
+        if (!isCurrent()) throw new TutorCancelledError("stale");
         pushMessage(scope, {
           role: "assistant",
           content: `${text || "Course generated."}\n\n✓ Course saved to your generated courses.`,
@@ -321,7 +434,8 @@ export const useTutor = create<TutorState>()((set, get) => ({
       }
 
       if (lesson) {
-        persistLessonAsCourse(lesson);
+        persistOnce(lesson, undefined);
+        if (!isCurrent()) throw new TutorCancelledError("stale");
         pushMessage(scope, {
           role: "assistant",
           content: `${text}\n\n✓ Lesson "${lesson.title.en}" saved as a generated course.`,
@@ -336,7 +450,8 @@ export const useTutor = create<TutorState>()((set, get) => ({
         return;
       }
       if (actions.length > 0) {
-        const msg = await performActions(scope, actions, text, p.name, req.lang);
+        const msg = await performActions(scope, actions, text, p.name, req.lang, signal);
+        if (!isCurrent()) throw new TutorCancelledError("stale");
         pushMessage(scope, msg);
         patchSession(scope, { status: "response" });
         return;
@@ -345,20 +460,143 @@ export const useTutor = create<TutorState>()((set, get) => ({
       patchSession(scope, { status: "response" });
     };
 
+    const deliverStream = async (p: TutorProvider): Promise<void> => {
+      const streamReq = buildRequest(scope, q);
+      patchSession(scope, { status: "streaming" });
+      pushMessage(scope, { role: "assistant", content: "" });
+      const placeholderIdx = useTutor.getState().sessions[scope].messages.length - 1;
+      let accumulated = "";
+      let gotText = false;
+      let done = false;
+      let streamActions: AiAction[] = [];
+      let streamExercise: AiExercisePayload | undefined;
+      try {
+        for await (const chunk of p.chatStream!(streamReq, reqOpts)) {
+          if (!isCurrent()) throw new TutorCancelledError("stale");
+          if (signal.aborted) throw abortedError();
+          if (chunk.type === "text") {
+            gotText = true;
+            accumulated += chunk.delta;
+            const msgs = useTutor.getState().sessions[scope].messages;
+            const lastIdx = msgs.length - 1;
+            patchSession(scope, {
+              messages: msgs.map((m, i) => (i === lastIdx ? { ...m, content: accumulated } : m)),
+            });
+          } else if (chunk.type === "actions") {
+            streamActions = chunk.actions;
+          } else if (chunk.type === "exercise") {
+            streamExercise = chunk.exercise;
+          } else if (chunk.type === "done") {
+            done = true;
+            break;
+          }
+        }
+      } catch (e) {
+        if (!isCurrent()) throw new TutorCancelledError("stale");
+        // A stream that already delivered content must NOT fall back to a
+        // second generation request: that would generate twice, apply
+        // actions twice, and persist twice. Surface the failure instead.
+        if (gotText || done) throw e;
+        // Nothing arrived yet, so no generation happened: exactly one
+        // non-streaming attempt. A fallback, not a duplicate.
+        dropPlaceholderIfEmpty(placeholderIdx);
+        return await deliverChat(p);
+      }
+      if (!isCurrent()) throw new TutorCancelledError("stale");
+      if (signal.aborted) throw abortedError();
+
+      // Structured payloads arrive as stream chunks (mock) or embedded
+      // blocks (live) — either way, a single generation, no second chat().
+      const merged = mergeResult({
+        reply: accumulated,
+        actions: streamActions.length > 0 ? streamActions : undefined,
+        exercise: streamExercise,
+      });
+      const { actions, exercise, lesson, course } = merged;
+
+      if (course) persistOnce(undefined, course);
+      else if (lesson) persistOnce(lesson, undefined);
+
+      if (!isCurrent()) throw new TutorCancelledError("stale");
+      if (signal.aborted) throw abortedError();
+
+      // An empty completed stream with no payload is an invalid response,
+      // not a silent success.
+      if (!accumulated.trim() && actions.length === 0 && !exercise && !lesson && !course) {
+        dropPlaceholderIfEmpty(placeholderIdx);
+        throw new TutorInvalidResponseError("empty stream result");
+      }
+
+      const msgs = useTutor.getState().sessions[scope].messages;
+      const lastIdx = msgs.length - 1;
+
+      if (actions.length > 0 && actions.some(isDestructive)) {
+        patchSession(scope, {
+          messages: msgs.map((m, i) => (i === lastIdx ? { ...m, pending: true } : m)),
+          pending: { actions, note: accumulated },
+          status: "response",
+        });
+        return;
+      }
+      if (actions.length > 0) {
+        const msg = await performActions(scope, actions, accumulated, p.name, req.lang, signal);
+        if (!isCurrent()) throw new TutorCancelledError("stale");
+        patchSession(scope, {
+          messages: [...msgs.slice(0, lastIdx), msg],
+          status: "response",
+        });
+        return;
+      }
+      patchSession(scope, {
+        messages: msgs.map((m, i) =>
+          i === lastIdx ? { ...m, content: accumulated, exercise: exercise ?? undefined } : m
+        ),
+        status: "response",
+      });
+    };
+
+    const deliver = async (p: TutorProvider): Promise<void> => {
+      if (p.chatStream) return await deliverStream(p);
+      return await deliverChat(p);
+    };
+
     try {
       await deliver(provider);
+      if (!isCurrent()) {
+        release();
+        return;
+      }
+      release();
     } catch (e) {
+      if (!isCurrent()) {
+        release();
+        return;
+      }
       if (e instanceof TutorUnavailableError && get().mode !== "mock") {
+        // Offline fallback (preserved): only for unconfigured/unreachable,
+        // never for timeout/cancel/provider/invalid — those must surface.
         set({ mode: "mock" });
         try {
           await deliver(mock);
+          if (!isCurrent()) {
+            release();
+            return;
+          }
+          release();
           return;
-        } catch {
-          patchSession(scope, { status: "error" });
+        } catch (e2) {
+          if (!isCurrent()) {
+            release();
+            return;
+          }
+          release();
+          // The fallback ran under the same signal/identity: classify it.
+          patchSession(scope, classify(e2));
           return;
         }
       }
-      patchSession(scope, { status: "error" });
+      const tail = useTutor.getState().sessions[scope].messages.length - 1;
+      fail(e, provider.chatStream ? tail : null);
     }
   },
 
@@ -367,7 +605,33 @@ export const useTutor = create<TutorState>()((set, get) => ({
     if (last) await get().ask(scope, last);
   },
 
-  clear: (scope) => set({ sessions: { ...get().sessions, [scope]: freshSession() } }),
+  clear: (scope) => {
+    // Invalidate any in-flight ask so its late completion is dropped, then
+    // abort it and reset the session. Loading can never survive a clear.
+    activeSeq[scope] += 1;
+    const c = controllers[scope];
+    controllers[scope] = null;
+    if (c) {
+      try {
+        c.abort();
+      } catch {
+        /* ignore */
+      }
+    }
+    set({ sessions: { ...get().sessions, [scope]: freshSession() } });
+  },
+
+  cancel: (scope) => {
+    const c = controllers[scope];
+    if (!c) return;
+    const s = get().sessions[scope].status;
+    if (s !== "thinking" && s !== "streaming") return;
+    try {
+      c.abort();
+    } catch {
+      /* the ask's catch still settles the session */
+    }
+  },
 
   confirmPending: async (scope) => {
     const pending = get().sessions[scope].pending;
