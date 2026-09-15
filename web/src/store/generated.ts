@@ -172,6 +172,56 @@ const COURSES_KEY = "axiom_generated_courses";
 
 const GENERATED_META = { en: "custom", ru: "пользовательские" };
 const GENERATED_ACCENT = "#7C5CFC";
+const GENERATED_DURATION = "10 min";
+
+/* ---- Generated-course contract (Commit #10) ----
+   Audit of the canonical Course type (web/src/data/content.ts):
+     Course  = { id, source, title{en,ru}, meta{en,ru}, level, accent, lessons[] }
+     Lesson  = { id, title{en,ru}, duration, level, body{en,ru[]}, quiz{q{en,ru}, opts{en,ru[]}, correct} }
+     GeneratedCourse = Course & { source: "generated", description{en,ru} }
+   That is the ONLY schema. There are no objectives, prerequisites, or
+   courseTag fields on Course/Lesson (courseTag lives on the legacy
+   GeneratedLesson only), so validation neither requires nor emits them —
+   unknown extra fields are ignored, never a rejection reason and never
+   persisted. Anything the model emits outside this shape is rejected
+   deterministically (no LLM validator) before persistence.
+
+   Two gates, both deterministic:
+   - normalizeGeneratedCourse(raw): lenient hydration gate. Missing
+     description/meta/level/accent/duration fall back to conventions;
+     missing RU text falls back to EN; invalid lessons are filtered
+     (zero valid lessons rejects the course); unknown fields ignored.
+   - normalizeGeneratedCourse(raw, true): strict AI-output gate used by
+     persistCourseAsCourse. Bilingual fields must be explicit (no
+     fallbacks), EN/RU arrays must have matching lengths, lesson count
+     must be 2-12, every lesson must be valid (one bad lesson rejects
+     the whole course), and all length/format caps below are enforced.
+   Length/format caps (both gates reject on violation, except where a
+   documented fallback applies in the lenient gate):
+   - ids: 1-80 chars, ^[A-Za-z0-9][A-Za-z0-9_-]*$; strict course ids must
+     additionally start with "generated-". Missing course id derives
+     stably from the title slug ("generated-<slug>"), NEVER Date.now().
+     Lesson ids are required (never derived); duplicates reject.
+   - title en/ru: 1-120 chars. description en/ru: 1-600. meta en/ru: 1-80.
+   - level: exactly beginner|intermediate|advanced.
+   - accent: #RRGGBB. duration (lesson): strict "N min"; lenient any
+     1-24 chars, otherwise the "10 min" default.
+   - body: 1-8 paragraphs per language, each 1-1000 chars.
+   - quiz question: 1-300 chars; options: 2-6 per language, each 1-200
+     chars, EN/RU counts must match; correct: integer in range.
+   Lesson order is significant (Study renders array order) and is always
+   preserved verbatim — validation never sorts or reorders. */
+
+/** Maximum counts. */
+const MAX_COURSE_LESSONS = 20;
+const STRICT_MIN_LESSONS = 2;
+const STRICT_MAX_LESSONS = 12;
+const MAX_BODY_PARAS = 8;
+const MAX_QUIZ_OPTS = 6;
+
+const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
+const ACCENT_RE = /^#[0-9a-fA-F]{6}$/;
+const DURATION_RE = /^\d{1,3}\s*min$/;
 
 /** A complete AI-generated course. Assignable to Course. */
 export interface GeneratedCourse extends Course {
@@ -183,13 +233,43 @@ function gText(x: unknown): string | null {
   return typeof x === "string" && x.trim() ? x.trim() : null;
 }
 
+/** Trimmed non-empty string within max chars, else null. */
+function gSized(x: unknown, max: number): string | null {
+  const t = gText(x);
+  return t && t.length <= max ? t : null;
+}
+
 function gList(x: unknown): string[] | null {
   return Array.isArray(x) && x.length > 0 && x.every((item) => gText(item) !== null)
     ? x.map((item) => gText(item)!)
     : null;
 }
 
-/** Validate one lesson payload inside a generated course (lesson ids required). */
+/** Non-empty string list with each item capped at max chars, else null. */
+function gSizedList(x: unknown, maxItems: number, maxChars: number): string[] | null {
+  const list = gList(x);
+  if (!list || list.length > maxItems) return null;
+  if (!list.every((item) => item.length <= maxChars)) return null;
+  return list;
+}
+
+/** True when the value is a non-empty string exceeding max chars. */
+function overlong(x: unknown, max: number): boolean {
+  const t = gText(x);
+  return t !== null && t.length > max;
+}
+
+/** Validated stable id (trimmed, 1-80 chars, slug-safe), else null. */
+function gId(x: unknown): string | null {
+  const t = gText(x);
+  return t && t.length <= 80 && ID_RE.test(t) ? t : null;
+}
+
+/** Validate one lesson payload inside a generated course (lesson ids required).
+    Lenient gate filters bad lessons (returns null); strict gate additionally
+    requires explicit RU text, matching EN/RU array lengths, a valid level,
+    a "N min" duration, and all length caps. Order is never touched here —
+    callers preserve input order verbatim. */
 function normalizeCourseLesson(raw: unknown, strict = false): Lesson | null {
   if (!raw || typeof raw !== "object") return null;
   const v = raw as Record<string, unknown>;
@@ -198,29 +278,40 @@ function normalizeCourseLesson(raw: unknown, strict = false): Lesson | null {
   const quiz = v.quiz as Record<string, unknown> | undefined;
   const q = quiz?.q as Record<string, unknown> | undefined;
   const opts = quiz?.opts as Record<string, unknown> | undefined;
-  const id = gText(v.id);
-  const titleEn = gText(title?.en);
-  const bodyEn = gList(body?.en);
-  const optsEn = gList(opts?.en);
-  const questionEn = gText(q?.en);
+  const id = gId(v.id);
+  const titleEn = gSized(title?.en, 120);
+  const bodyEn = gSizedList(body?.en, MAX_BODY_PARAS, 1000);
+  const optsEn = gSizedList(opts?.en, MAX_QUIZ_OPTS, 200);
+  const questionEn = gSized(q?.en, 300);
   const correct = quiz?.correct;
   if (
     !id || !titleEn || !bodyEn || !questionEn || !optsEn || optsEn.length < 2 ||
     !Number.isInteger(correct) || (correct as number) < 0 || (correct as number) >= optsEn.length
   ) return null;
-  const titleRu = gText(title?.ru) ?? titleEn;
-  if (strict && (!LEVELS.has(gText(v.level) ?? "beginner"))) return null;
-  const bodyRu = gList(body?.ru) ?? bodyEn;
-  const optsRu = gList(opts?.ru) ?? optsEn;
+  const rawTitleRu = gSized(title?.ru, 120);
+  const rawBodyRu = gSizedList(body?.ru, MAX_BODY_PARAS, 1000);
+  const rawOptsRu = gSizedList(opts?.ru, MAX_QUIZ_OPTS, 200);
+  const rawQuestionRu = gSized(q?.ru, 300);
+  if (strict && (!rawTitleRu || !rawBodyRu || !rawOptsRu || !rawQuestionRu)) return null;
+  const titleRu = rawTitleRu ?? titleEn;
+  const bodyRu = rawBodyRu ?? bodyEn;
+  const optsRu = rawOptsRu ?? optsEn;
+  const questionRu = rawQuestionRu ?? questionEn;
+  if (strict && bodyRu.length !== bodyEn.length) return null;
   if (optsRu.length !== optsEn.length) return null;
-  if (strict && (bodyEn.length > 8 || optsEn.length > 6)) return null;
+  const rawDuration = gText(v.duration);
+  const rawLevel = gText(v.level);
+  if (strict) {
+    if (!rawDuration || rawDuration.length > 24 || !DURATION_RE.test(rawDuration)) return null;
+    if (!rawLevel || !LEVELS.has(rawLevel)) return null;
+  }
   return {
     id,
     title: { en: titleEn, ru: titleRu },
-    duration: gText(v.duration) ?? "10 min",
-    level: gText(v.level) ?? "beginner",
+    duration: rawDuration && rawDuration.length <= 24 ? rawDuration : GENERATED_DURATION,
+    level: rawLevel && LEVELS.has(rawLevel) ? rawLevel : "beginner",
     body: { en: bodyEn, ru: bodyRu },
-    quiz: { q: { en: questionEn, ru: gText(q?.ru) ?? questionEn }, opts: { en: optsEn, ru: optsRu }, correct: correct as number },
+    quiz: { q: { en: questionEn, ru: questionRu }, opts: { en: optsEn, ru: optsRu }, correct: correct as number },
   };
 }
 
@@ -234,19 +325,28 @@ function slugifyTitle(s: string): string {
   return slug || "untitled";
 }
 
-/** Validate/normalize one persisted generated-course record. Returns null when rejected. */
+/** Validate/normalize one persisted generated-course record. Returns null when
+    rejected. Lenient gate defaults description/meta/level/accent and RU
+    fallbacks; strict AI gate requires explicit bilingual description, meta,
+    title.ru, accent, a valid level, 2-12 lessons with every lesson valid,
+    and matching EN/RU array lengths. Lesson order is preserved verbatim. */
 const LEVELS = new Set(["beginner", "intermediate", "advanced"]);
 
 export function normalizeGeneratedCourse(raw: unknown, strict = false): GeneratedCourse | null {
   if (!raw || typeof raw !== "object") return null;
   const v = raw as Record<string, unknown>;
+  // courseTag is a legacy GeneratedLesson field, not part of Course: ignored.
   if (v.source !== undefined && v.source !== "generated") return null;
   const title = v.title as Record<string, unknown> | undefined;
-  const titleEn = gText(title?.en);
+  const titleEn = gSized(title?.en, 120);
   if (!titleEn) return null;
+  const rawTitleRu = gSized(title?.ru, 120);
+  if (strict && !rawTitleRu) return null;
   const rawLessons = v.lessons;
   if (!Array.isArray(rawLessons) || rawLessons.length === 0) return null;
-  if (strict && (rawLessons.length < 2 || rawLessons.length > 12)) return null;
+  if (rawLessons.length > MAX_COURSE_LESSONS) return null;
+  if (strict && (rawLessons.length < STRICT_MIN_LESSONS || rawLessons.length > STRICT_MAX_LESSONS)) return null;
+  // Order significant for Study: keep input order, never sort.
   const lessons = rawLessons.flatMap((item) => {
     const lesson = normalizeCourseLesson(item, strict);
     return lesson ? [lesson] : [];
@@ -254,22 +354,39 @@ export function normalizeGeneratedCourse(raw: unknown, strict = false): Generate
   if (lessons.length === 0) return null;
   if (strict && lessons.length !== rawLessons.length) return null;
   if (new Set(lessons.map((lesson) => lesson.id)).size !== lessons.length) return null;
-  const titleRu = gText(title?.ru) ?? titleEn;
+  const titleRu = rawTitleRu ?? titleEn;
   const meta = v.meta as Record<string, unknown> | undefined;
-  const metaEn = gText(meta?.en) ?? GENERATED_META.en;
+  // Present-but-overlong meta strings are malformed metadata (both gates);
+  // missing/empty sides fall back below (lenient) or reject (strict).
+  if (overlong(meta?.en, 80) || overlong(meta?.ru, 80)) return null;
+  const rawMetaEn = gText(meta?.en);
+  const rawMetaRu = gText(meta?.ru);
+  if (strict && (!rawMetaEn || !rawMetaRu)) return null;
+  const metaEn = rawMetaEn ?? GENERATED_META.en;
   const description = v.description as Record<string, unknown> | undefined;
-  const descriptionEn = gText(description?.en) ?? titleEn;
-  const level = gText(v.level) ?? "beginner";
-  if (strict && (!gText(description?.en) || !gText(description?.ru) || !meta || !gText(meta.en) || !gText(meta.ru) || !LEVELS.has(level))) return null;
-  if (strict && (!gText(title?.ru) || !gText(v.accent))) return null;
+  if (overlong(description?.en, 600) || overlong(description?.ru, 600)) return null;
+  const rawDescriptionEn = gText(description?.en);
+  const rawDescriptionRu = gText(description?.ru);
+  if (strict && (!rawDescriptionEn || !rawDescriptionRu)) return null;
+  const descriptionEn = rawDescriptionEn ?? titleEn;
+  const descriptionRu = rawDescriptionRu ?? descriptionEn;
+  const rawLevel = gText(v.level);
+  const level = rawLevel && LEVELS.has(rawLevel) ? rawLevel : "beginner";
+  if (strict && (!rawLevel || !LEVELS.has(rawLevel))) return null;
+  const rawAccent = gText(v.accent);
+  const accent = rawAccent && ACCENT_RE.test(rawAccent) ? rawAccent : GENERATED_ACCENT;
+  if (strict && (!rawAccent || !ACCENT_RE.test(rawAccent))) return null;
+  const rawId = v.id === undefined ? null : gId(v.id);
+  if (v.id !== undefined && !rawId) return null;
+  if (strict && rawId && !rawId.startsWith("generated-")) return null;
   return {
-    id: gText(v.id) ?? `generated-${slugifyTitle(titleEn)}`,
+    id: rawId ?? `generated-${slugifyTitle(titleEn)}`,
     source: "generated",
     title: { en: titleEn, ru: titleRu },
-    description: { en: descriptionEn, ru: gText(description?.ru) ?? descriptionEn },
-    meta: { en: metaEn, ru: gText(meta?.ru) ?? metaEn },
+    description: { en: descriptionEn, ru: descriptionRu },
+    meta: { en: metaEn, ru: rawMetaRu ?? metaEn },
     level,
-    accent: gText(v.accent) ?? GENERATED_ACCENT,
+    accent,
     lessons,
   };
 }
@@ -383,11 +500,15 @@ export function persistLessonAsCourse(lesson: ParsedLesson): void {
   });
 }
 
-/** Persist one complete, strictly validated multi-lesson generated course. */
-export function persistCourseAsCourse(course: ParsedCourse): void {
+/** Persist one complete, strictly validated multi-lesson generated course.
+    Returns true when the AI output passed the strict structural gate and was
+    stored; false when it was structurally invalid and rejected before any
+    write (nothing is persisted on rejection). Deterministic: no LLM judge. */
+export function persistCourseAsCourse(course: ParsedCourse): boolean {
   const normalized = normalizeGeneratedCourse(course, true);
-  if (!normalized) return;
+  if (!normalized) return false;
   useGeneratedCourses.getState().addCourse(normalized);
+  return true;
 }
 
 /** Merge generated lessons into the hardcoded courses array.
